@@ -1,0 +1,25 @@
+node_modules/
+dist/
+*.tgz
+
+# env / secrets
+.env
+
+# OS metadata
+.DS_Store
+._*
+
+# IDEs
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# logs
+*.log
+
+.antigravitycli
+
+# coverage
+coverage
