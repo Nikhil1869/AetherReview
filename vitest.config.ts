@@ -26,7 +26,12 @@ export default defineConfig({
   test: {
     root,
     environment: "node",
-    include: ["src/**/__tests__/**/*.test.ts"],
+    include: [
+      "src/**/__tests__/**/*.test.ts",
+      ...(process.env.AETHER_LIVE_FORGES === "1"
+        ? ["src/engine/__tests__/publicForges.live.ts"]
+        : []),
+    ],
     setupFiles: ["./src/engine/__tests__/helpers/setupEnv.ts"],
     coverage: {
       provider: "v8",

@@ -3,6 +3,7 @@
  * no commit-comment tools. */
 
 import { gitlabUrl, resolveToken } from "./config.js";
+import { ForgeSession } from "./forgeSession.js";
 import { newSideLines } from "./diff.js";
 import type { FileDiff, Forge } from "./types.js";
 
@@ -31,6 +32,7 @@ async function githubFetch(path: string, init?: RequestInit): Promise<Response> 
   await ensureFreshGithubToken();
   return fetch(`${githubBase()}${path}`, {
     ...init,
+    redirect: "error",
     headers: { ...githubHeaders(), ...(init?.headers as Record<string, string>) },
     signal: AbortSignal.timeout(30000),
   });
@@ -110,20 +112,34 @@ export async function listCommitCommentBodies(
   projectId: string,
   sha: string,
 ): Promise<string[]> {
-  try {
-    if (forge === "github") {
-      const r = await githubFetch(`/repos/${projectId}/commits/${sha}/comments?per_page=100`);
-      if (!r.ok) return [];
-      return ((await r.json()) as any[]).map((c) => c.body ?? "");
-    }
-    const r = await gitlabFetch(
-      `/projects/${encodeURIComponent(projectId)}/repository/commits/${sha}/comments?per_page=100`,
-    );
-    if (!r.ok) return [];
-    return ((await r.json()) as any[]).map((c) => c.note ?? "");
-  } catch {
-    return [];
+  const github = forge === "github";
+  if (github) {
+    const { ensureFreshGithubToken } = await import("./githubAuth.js");
+    await ensureFreshGithubToken();
   }
+  const base = github ? githubBase() : gitlabUrl() + "/api/v4";
+  const session = new ForgeSession(base, github ? githubHeaders() : gitlabHeaders(), github);
+  const actor = await session.actorId();
+  const path = github
+    ? "/repos/" + projectId + "/commits/" + sha + "/comments"
+    : "/projects/" + encodeURIComponent(projectId) + "/repository/commits/" + sha + "/comments";
+  const comments = await session.pages(base + path);
+  return comments
+    .filter((c) => (github ? c.user : c.author)?.id === actor)
+    .map((c) => (github ? c.body : c.note) ?? "");
+}
+
+export async function branchHead(forge: Forge, projectId: string, branch: string): Promise<string> {
+  const name = encodeURIComponent(branch);
+  const r =
+    forge === "github"
+      ? await githubFetch("/repos/" + projectId + "/branches/" + name)
+      : await gitlabFetch(
+          "/projects/" + encodeURIComponent(projectId) + "/repository/branches/" + name,
+        );
+  if (!r.ok) throw Error("Could not verify the current branch head (HTTP " + r.status + ").");
+  const data = await r.json();
+  return forge === "github" ? data.commit?.sha : data.commit?.id;
 }
 
 /** GitHub anchors commit comments by diff position, not file line: lines are

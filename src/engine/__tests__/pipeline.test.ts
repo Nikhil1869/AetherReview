@@ -107,6 +107,35 @@ describe("runReview", () => {
     expect(fake.submitReview).not.toHaveBeenCalled();
   });
 
+  it.each(["cancel", "base"])(
+    "stops remaining mutations after the status note when the %s guard fires",
+    async (reason) => {
+      const controller = new AbortController();
+      const fake = makeFakeForge({ diffs: [diff] });
+      ph.fake = fake;
+      vi.mocked(review).mockResolvedValue({ findings: [], summary: "ok" });
+      vi.mocked(fake.postStatus).mockImplementationOnce(async () => {
+        await fake.beforeWrite!();
+        if (reason === "cancel") controller.abort();
+        else
+          vi.mocked(fake.getMr).mockResolvedValue({
+            ...(await fake.getMr("o/r", 1)),
+            diffRefs: { head_sha: "headsha", base_sha: "new", start_sha: "startsha" },
+          });
+        return 1;
+      });
+      vi.mocked(fake.submitReview).mockImplementationOnce(async () => {
+        await fake.beforeWrite!();
+        return true;
+      });
+      expect(
+        await runReview(job(), () => {}, { publish: true, signal: controller.signal }),
+      ).toMatchObject({ status: "skipped" });
+      expect(fake.edited).toEqual([]);
+      expect(fake.labels).toEqual([]);
+    },
+  );
+
   it("fails a provider failure without writing a clean label or summary", async () => {
     const fake = makeFakeForge({ diffs: [diff] });
     ph.fake = fake;
