@@ -31,6 +31,27 @@ describe("newSideLines", () => {
 });
 
 describe("reviewDiff", () => {
+  it.each([
+    [".env", "public.txt"],
+    ["public.txt", "nested/config.PEM"],
+    [".ssh/id_ed25519", "readme"],
+  ])("withholds both sides of sensitive renames: %s to %s", (oldPath, newPath) => {
+    expect(
+      reviewDiff(
+        [
+          {
+            oldPath,
+            newPath,
+            diff: "@@ -1 +1 @@\n-private\n+sample",
+            newFile: false,
+            deletedFile: false,
+          },
+        ],
+        1000,
+      ).files,
+    ).toEqual([]);
+  });
+
   it("selects only patches that fit and keeps the file list aligned with model input", () => {
     const file = (name: string, diff: string): FileDiff => ({
       newPath: name,
