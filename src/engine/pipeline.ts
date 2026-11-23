@@ -128,7 +128,7 @@ export async function runReview(
   let gl: ForgeClient | null = null;
   let statusId: number | string | null = null;
   try {
-    gl = await getForgeClient(job.forge);
+    gl = await getForgeClient(job.forge, options.publish !== true);
     const mr = await gl.getMr(projectId, prNumber);
     const refs = mr.diffRefs;
     const headRef = mr.headSha;

@@ -1,4 +1,4 @@
-/** Explicit opt-in. Only anonymous GETs to the two named public forges may leave this process. */
+/** Explicit opt-in. Only GETs to the two named public forges may leave this process. */
 import { afterEach, expect, it, vi } from "vitest";
 import { getForgeClient } from "../forge.js";
 import { newSideLines, reviewDiff } from "../diff.js";
@@ -29,6 +29,11 @@ it.each([
     vi.stubEnv("GITLAB_URL", "https://gitlab.com");
     vi.stubEnv("MAX_DIFF_CHARS", String(budget));
     vi.stubEnv("REVIEWER_BASE_URL", "http://127.0.0.1:1234/v1");
+    const jobToken = forge === "github" ? process.env.AETHER_CI_READ_TOKEN : undefined;
+    if (jobToken) {
+      vi.stubEnv("GITHUB_TOKEN", jobToken);
+      vi.stubEnv("GITHUB_BACKEND", "rest");
+    }
     const nativeFetch = globalThis.fetch;
     const cache = new Map<string, Response>();
     const blocked: string[] = [];
@@ -38,7 +43,10 @@ it.each([
       if (
         (init?.method ?? "GET") !== "GET" ||
         !["api.github.com", "gitlab.com"].includes(host) ||
-        headers.has("authorization") ||
+        (headers.has("authorization") &&
+          (host !== "api.github.com" ||
+            !jobToken ||
+            headers.get("authorization") !== "Bearer " + jobToken)) ||
         headers.has("private-token")
       ) {
         blocked.push(host);
@@ -87,7 +95,7 @@ it.each([
         summary: "integration",
       });
       const outcome = await runReview({ forge, projectId, prNumber }, () => {});
-      expect(outcome).toMatchObject({
+      expect(outcome, outcome.status === "failed" ? outcome.message : undefined).toMatchObject({
         status: "completed",
         result: { findings: [{ file: file.newPath, line: line.line }] },
       });
@@ -96,6 +104,7 @@ it.each([
         JSON.stringify({
           forge,
           projectId,
+          auth: jobToken ? "read-only Actions token" : "anonymous",
           sourceProject: mr.sourceProjectId,
           head: mr.headSha,
           files: diffs.length,

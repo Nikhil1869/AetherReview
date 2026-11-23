@@ -20,6 +20,8 @@ import type { DiffRefs, FileDiff, MrInfo } from "./types.js";
 const MCP_URL = "https://api.githubcopilot.com/mcp/";
 
 export class GitHubMcpClient implements ForgeClient {
+  constructor(private readonly readOnly = false) {}
+
   private readonly token = resolveToken("github");
   private client: Client | null = null;
   private drafts = new Map<string, number>();
@@ -42,7 +44,13 @@ export class GitHubMcpClient implements ForgeClient {
     if (!token)
       throw new Error("GitHub not connected. Run: aetherreview (setup) or set GITHUB_TOKEN");
     const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
-      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      requestInit: {
+        redirect: "error",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(this.readOnly ? { "X-MCP-Readonly": "true" } : {}),
+        },
+      },
     });
     const client = new Client({ name: "aether-review", version: "2.1.0" });
     await client.connect(transport);
