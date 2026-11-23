@@ -3,6 +3,7 @@
 
 import { reviewLimits } from "./config.js";
 import type { ForgeClient } from "./forge.js";
+import { isExcluded } from "./norms.js";
 import * as rf from "./repoFiles.js";
 import type { ContextBundle, ContextFile, FileDiff, Norms } from "./types.js";
 
@@ -12,22 +13,24 @@ const clip = (text: string, limit = 6000) =>
   text.length <= limit ? text : `${text.slice(0, limit)}\n… (truncated)`;
 
 export async function buildContext(
-  gl: ForgeClient,
+  gl: Pick<ForgeClient, "getFile" | "searchBlobs">,
   projectId: string,
   head: string,
   diffs: FileDiff[],
-  _norms: Norms,
+  norms: Norms,
   log: (msg: string) => void = () => {},
 ): Promise<ContextBundle> {
   const files = new Map<string, ContextFile>();
   const notes: string[] = [];
   const seenSymbols = new Set<string>();
+  const getFile = (path: string) =>
+    isExcluded(path, norms) ? Promise.resolve(null) : gl.getFile(projectId, path, head);
 
   for (const d of diffs) {
     const path = d.newPath || d.oldPath;
     if (!path || d.deletedFile) continue;
     const lang = rf.langOf(path);
-    const full = await gl.getFile(projectId, path, head);
+    const full = await getFile(path);
     if (!full) continue;
 
     if (!files.has(path)) files.set(path, { path, reason: "changed", content: clip(full) });
@@ -36,7 +39,7 @@ export async function buildContext(
     for (const spec of rf.parseImports(full, lang)) {
       for (const cand of rf.resolveImport(spec, path, lang)) {
         if (files.has(cand)) break;
-        const body = await gl.getFile(projectId, cand, head);
+        const body = await getFile(cand);
         if (body) {
           files.set(cand, { path: cand, reason: "import", content: clip(body) });
           break;
@@ -51,7 +54,7 @@ export async function buildContext(
       const hits = await gl.searchBlobs(projectId, sym, head).catch(() => []);
       for (const hit of hits.slice(0, 3)) {
         if (hit.path && hit.path !== path && !files.has(hit.path)) {
-          const body = await gl.getFile(projectId, hit.path, head);
+          const body = await getFile(hit.path);
           if (body) files.set(hit.path, { path: hit.path, reason: "caller", content: clip(body) });
         }
       }
@@ -64,7 +67,7 @@ export async function buildContext(
         foundTest = true;
         break;
       }
-      const body = await gl.getFile(projectId, cand, head);
+      const body = await getFile(cand);
       if (body) {
         files.set(cand, { path: cand, reason: "test", content: clip(body) });
         foundTest = true;

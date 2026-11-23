@@ -47,12 +47,11 @@ Full per-module detail: [Engine Reference](./engine-reference.md).
 
 ## The review data flow
 
-There is **one** entrypoint for a review: `pipeline.runReview(job, log)`. The CLI, the TUI's
-paste box, and the watcher all converge on it.
+The CLI and dashboard call `pipeline.runReview(target, log, options)`. Local targets use the Git reader. Forge targets use an adapter and share the same evidence validation. The watcher calls the same entry point for requests and uses `runPushReview` for branch pushes.
 
 ```
  ┌─ trigger ──────────────────────────────────────────────┐
- │  CLI `review`   TUI paste box   watcher (new PR/push)   │
+ │  CLI `review`   dashboard   authorized watcher          │
  └───────────────────────┬────────────────────────────────┘
                          ▼
               pipeline.runReview(job)
@@ -61,18 +60,17 @@ paste box, and the watcher all converge on it.
    2. state.acquireLock ─┤  already reviewing this PR → skip
                          │
    3. forge = getForgeClient(job.forge)        ── GitHub→MCP (default), GitLab→REST
-   4. postStatus("🐢 reviewing…")              ── sticky note where editable
+   4. acquire snapshot                         ── local Git or forge API
    5. mr   = forge.getMr()                      ── branches + diff refs
    6. diffs = forge.getDiffs()                  ── per-file unified diffs
    7. norms = loadNorms(...)                    ── defaults ← global cfg & packs ← repo cfg
                                                    (agent/key_ref stripped; transforms run last)
    8. filtered = applyExcludes(diffs, norms)    ── drop lockfiles, dist, etc.
    9. context = buildContext(...)               ── changed + imports + callers + tests
-  10. result  = review(diff, context, norms)    ── LLM → validated findings
+  10. result  = review(diff, context, norms)    ── model → exact added-line evidence checks
   11. kept = filter(confidence ≥ threshold)
             .slice(0, maxFindings)
-            .then(snapFindings)                 ── nudge lines onto the diff
-  12. finalize(...)                             ── post inline + summary + labels
+  12. return preview or finalize(...)           ── publish only when authorized and current
                          │
    finally: forge.close() + state.releaseLock()
 ```

@@ -1,5 +1,9 @@
 # AetherReview — Documentation
 
+- [CLI reference](./cli-reference.md)
+- [Production readiness audit](./production-audit.md)
+- [Release verification](./release.md)
+
 Welcome. This folder is the human-facing companion to [`AGENTS.md`](../AGENTS.md) (the
 canonical guide for AI coding agents). If you're a new contributor, start here.
 

@@ -1,6 +1,7 @@
 import { afterEach, beforeEach, describe, expect, it, vi } from "vitest";
 
 import type { ContextBundle, Norms } from "../types.js";
+import { reviewDiff } from "../diff.js";
 
 // hoisted so the (hoisted) vi.mock factory can reach it. queue serves per-call
 // responses (multi-pass tests); errors throws status codes first (retry tests);
@@ -32,6 +33,19 @@ vi.mock("openai", () => ({
 
 // imported after the mock is registered
 const { review, describeModelError } = await import("../reviewer.js");
+
+const diff = (...files: [string, string][]) =>
+  reviewDiff(
+    files.map(([path, patch]) => ({
+      newPath: path,
+      oldPath: path,
+      diff: patch,
+      newFile: false,
+      deletedFile: false,
+    })),
+    Infinity,
+  );
+const oneLine = (line: number, code: string) => `@@ -0,0 +${line},1 @@\n+${code}\n`;
 
 const ctx: ContextBundle = { files: [], notes: [] };
 const norms: Norms = {
@@ -68,21 +82,35 @@ describe("review (hostile reviewer output)", () => {
           confidence: 0.8,
           title: "t",
           comment: "c",
+          evidence: "one",
         },
         { line: 3, severity: "warning", category: "bug", confidence: 0.5 }, // no file → dropped
         { file: "b.ts", line: 2, severity: "BOGUS", category: "bug", confidence: 0.5 }, // bad severity → dropped
-        { file: "c.ts", line: 1, severity: "info", category: "style", confidence: "high" }, // word → 0.9
+        {
+          file: "c.ts",
+          line: 1,
+          severity: "info",
+          category: "style",
+          confidence: "high",
+          title: "t",
+          comment: "c",
+          evidence: "three",
+        },
       ],
       summary: "ok",
     });
-    const r = await review("diff", ctx, norms);
+    const r = await review(
+      diff(["a.ts", oneLine(5, "one")], ["c.ts", oneLine(1, "three")]),
+      ctx,
+      norms,
+    );
     expect(r.findings).toHaveLength(2);
     expect(r.summary).toBe("ok");
     const cFile = r.findings.find((f) => f.file === "c.ts");
     expect(cFile?.confidence).toBeCloseTo(0.9);
   });
 
-  it("drops a finding whose evidence is not in the diff (hallucination gate)", async () => {
+  it("requires full evidence at the claimed added line in the claimed file", async () => {
     const base = {
       line: 5,
       severity: "critical",
@@ -93,18 +121,34 @@ describe("review (hostile reviewer output)", () => {
     };
     h.content = JSON.stringify({
       findings: [
-        { ...base, file: "real.ts", evidence: "if (x.isAfter(now))" },
-        { ...base, file: "fake.ts", evidence: "if (x.isBefore(now))" }, // model invented this line
-        { ...base, file: "noev.ts" }, // no evidence → kept (weak models omit it)
+        { ...base, file: "real.ts", evidence: "if (x.isAfter(now)) {" },
+        { ...base, file: "other.ts", evidence: "if (x.isAfter(now)) {" },
+        { ...base, file: "real.ts", line: 4, evidence: "if (x.isBefore(now)) {" },
+        { ...base, file: "real.ts", line: 6, evidence: "unchanged" },
+        { ...base, file: "real.ts", line: 5.8, evidence: "if (x.isAfter(now)) {" },
+        { ...base, file: "real.ts", evidence: "x.isAfter(now)" },
+        { ...base, file: "real.ts" },
       ],
       summary: "ok",
     });
-    const diff = "@@ -1,1 +1,1 @@\n+        if (x.isAfter(now)) {\n";
-    const r = await review(diff, ctx, norms);
-    expect(r.findings.map((f) => f.file)).toEqual(["real.ts", "noev.ts"]);
+    const input = diff(
+      [
+        "real.ts",
+        "@@ -4,2 +5,2 @@\n-if (x.isBefore(now)) {\n+        if (x.isAfter(now)) {\n unchanged\n",
+      ],
+      ["other.ts", oneLine(5, "other")],
+    );
+    const r = await review(input, ctx, norms);
+    expect(r.findings).toEqual([
+      expect.objectContaining({
+        file: "real.ts",
+        line: 5,
+        evidence: "        if (x.isAfter(now)) {",
+      }),
+    ]);
   });
 
-  it("matches evidence whitespace-insensitively", async () => {
+  it("accepts an evidence quote with omitted indentation", async () => {
     h.content = JSON.stringify({
       findings: [
         {
@@ -115,12 +159,12 @@ describe("review (hostile reviewer output)", () => {
           confidence: 0.8,
           title: "t",
           comment: "c",
-          evidence: "const  x=1;",
+          evidence: "const x = 1;",
         },
       ],
       summary: "ok",
     });
-    const r = await review("@@ -0,0 +1,1 @@\n+const x = 1;\n", ctx, norms);
+    const r = await review(diff(["a.ts", oneLine(1, "  const x = 1;")]), ctx, norms);
     expect(r.findings).toHaveLength(1);
   });
 
@@ -134,6 +178,7 @@ describe("review (hostile reviewer output)", () => {
       severity: "critical",
       title: "t",
       comment: "c",
+      evidence: "added",
     });
     h.queue = [
       JSON.stringify({ findings: [f("a.ts", 5, "security", 0.7)], summary: "general view" }),
@@ -144,7 +189,15 @@ describe("review (hostile reviewer output)", () => {
       }),
       JSON.stringify({ findings: [f("c.ts", 1, "bug", 0.8)], summary: "y" }),
     ];
-    const r = await review("diff", ctx, norms);
+    const r = await review(
+      diff(
+        ["a.ts", "@@ -0,0 +5,2 @@\n+added\n+added\n"],
+        ["b.ts", oneLine(9, "added")],
+        ["c.ts", oneLine(1, "added")],
+      ),
+      ctx,
+      norms,
+    );
     expect(h.calls).toBe(3);
     expect(r.summary).toBe("general view"); // summary comes from the general pass
     expect(r.findings).toHaveLength(3);
@@ -154,57 +207,60 @@ describe("review (hostile reviewer output)", () => {
 
   it("runs a single call when passes=1 (default)", async () => {
     h.content = JSON.stringify({ findings: [], summary: "ok" });
-    await review("diff", ctx, norms);
+    await review(diff(), ctx, norms);
     expect(h.calls).toBe(1);
   });
 
   it("retries rate limits (429) with backoff and succeeds", async () => {
     h.errors = [429, 429];
     h.content = JSON.stringify({ findings: [], summary: "after retries" });
-    const r = await review("diff", ctx, norms);
+    const r = await review(diff(), ctx, norms);
     expect(r.summary).toBe("after retries");
     expect(h.calls).toBe(3);
   });
 
   it("gives up after exhausting retries on a persistent 429", async () => {
     h.errors = [429, 429, 429];
-    await expect(review("diff", ctx, norms)).rejects.toThrow("429");
+    await expect(review(diff(), ctx, norms)).rejects.toThrow("429");
   });
 
   it("surfaces an actionable message when the model errors out", async () => {
     h.errors = [429, 429, 429];
-    await expect(review("diff", ctx, norms)).rejects.toThrow(/quota|rate limit/i);
+    await expect(review(diff(), ctx, norms)).rejects.toThrow(/quota|rate limit/i);
   });
 
   it("strips response_format only on a 400-style rejection", async () => {
     h.errors = [400]; // first call (with response_format) rejected
     h.content = JSON.stringify({ findings: [], summary: "fallback ok" });
-    const r = await review("diff", ctx, norms);
+    const r = await review(diff(), ctx, norms);
     expect(r.summary).toBe("fallback ok");
     expect(h.calls).toBe(2);
   });
 
   it("parses JSON wrapped in markdown fences", async () => {
     h.content = "```json\n" + JSON.stringify({ findings: [], summary: "fenced" }) + "\n```";
-    const r = await review("diff", ctx, norms);
+    const r = await review(diff(), ctx, norms);
     expect(r.summary).toBe("fenced");
   });
 
-  it("returns an empty result for non-JSON output", async () => {
-    h.content = "I am not JSON at all";
-    const r = await review("diff", ctx, norms);
-    expect(r.findings).toEqual([]);
-    expect(r.summary).toMatch(/could not be parsed/i);
-  });
+  it.each(["private provider response", "{}", "null", '{"findings":{},"summary":"x"}'])(
+    "fails closed on malformed content without echoing it",
+    async (content) => {
+      h.content = content;
+      const log = vi.fn();
+      await expect(review(diff(), ctx, norms, log)).rejects.toThrow(/invalid response/i);
+      expect(log.mock.calls.flat().join("\n")).not.toContain(content);
+    },
+  );
 
   it("throws when no API key is configured for a non-local endpoint", async () => {
     delete process.env.REVIEWER_API_KEY; // default base url is the Gemini cloud endpoint
-    await expect(review("diff", ctx, norms)).rejects.toThrow(/API key/i);
+    await expect(review(diff(), ctx, norms)).rejects.toThrow(/API key/i);
   });
 });
 
 describe("describeModelError", () => {
-  it("includes model, status, provider detail, and a hint", () => {
+  it("includes model, status and a safe hint while omitting provider detail", () => {
     const e = Object.assign(new Error("429 status code (no body)"), {
       status: 429,
       error: { message: "You exceeded your current quota" },
@@ -212,15 +268,15 @@ describe("describeModelError", () => {
     const out = describeModelError(e, "gemini-2.5-pro");
     expect(out.message).toContain("gemini-2.5-pro");
     expect(out.message).toContain("429");
-    expect(out.message).toContain("exceeded your current quota");
+    expect(out.message).not.toContain("exceeded your current quota");
     expect(out.message).toMatch(/billing|quota/);
     expect((out as { status?: number }).status).toBe(429); // callers still branch on .status
   });
 
-  it("falls back to a generic hint for 5xx and passes through non-API errors", () => {
+  it("falls back to safe hints for 5xx and transport errors", () => {
     const e = Object.assign(new Error("500 status code (no body)"), { status: 500 });
     expect(describeModelError(e, "m").message).toMatch(/server error/);
     const plain = new Error("boom");
-    expect(describeModelError(plain, "m")).toBe(plain);
+    expect(describeModelError(plain, "m").message).not.toContain("boom");
   });
 });

@@ -9,23 +9,25 @@ This page gets you from a fresh clone to a working review.
 - **Node.js ≥ 22.12** (floor set by `commander@15`/`ink@7`; native `fetch` and `AbortSignal.timeout` are used)
 - A package manager (`npm`)
 - An API key for at least one LLM provider, **or** a local server (Ollama / LM Studio)
-- A GitHub and/or GitLab token (or a logged-in `gh` CLI session)
+- Git for local reviews. Remote reviews require a forge credential or a logged-in `gh` session.
 
 ## Install (as a user)
 
 ```bash
-npm install -g aether-review
+npm ci
+npm pack
+npm install -g ./aether-review-2.1.0.tgz
 aetherreview              # bare command opens the TUI; first run walks you through setup
 ```
 
 ## Develop (from source)
 
 ```bash
-git clone <repo>
-cd aether-review
-npm install
+git clone https://github.com/Nikhil1869/AetherReview.git
+cd AetherReview
+npm ci
 
-# build the single-file CLI
+# build the executable and its runtime chunks
 npm run build           # tsup → dist/cli.js  (shebang banner added automatically)
 
 # type-check without emitting (covers src + co-located tests)
@@ -59,7 +61,7 @@ npm run build
 
 # clean up when done
 npm unlink -g aether-review
-npm install -g aether-review   # restore the published version
+npm install -g ./aether-review-2.1.0.tgz  # restore a packed build
 ```
 
 The symlink points at `dist/`, so every `npm run build` immediately reflects in the global
@@ -113,36 +115,33 @@ Everything is written to `~/.aetherreview/` with `chmod 600`. See [Configuration
 
 ## CLI subcommands
 
-The bare command opens the TUI. For scripting, three subcommands exist
-(see [`src/cli/index.ts`](../src/cli/index.ts)):
+The bare command opens the dashboard. The CLI can review local Git changes without forge credentials and preview or publish a remote review. See the [CLI reference](./cli-reference.md) for targets, reports, and exit codes.
 
 ```bash
-# Review a single PR/MR — paste a link OR pass flags
+# Review staged changes with a configured model
+aetherreview review --staged
+
+# Preview a single PR/MR using a link or target flags
 aetherreview review https://github.com/owner/repo/pull/42
 aetherreview review --forge github --repo owner/repo --pr 42
 
 # Show connection + model status
 aetherreview status
+aetherreview doctor
 
 # Wipe ALL local config (tokens, model, logs). -y skips the confirm prompt.
 aetherreview reset
 ```
 
-> **Note:** the top-level `README.md` mentions `start` / `logs` / `stop` daemon commands.
-> Those are **not implemented** in the current `cli/index.ts` — the only subcommands are
-> `review`, `status`, and `reset`. Background watching today happens inside the TUI via the
-> [`watch`](./engine-reference.md#watchts) loop. Treat the daemon commands as roadmap.
+Automatic posting runs during an authorized dashboard session. Open the authorization screen with `a` to see the repository scope.
 
 ## Your first review
 
 ```bash
-# from the TUI: paste a PR/MR link into the input box and press enter
-# or from the shell:
 node dist/cli.js review https://github.com/owner/repo/pull/42
 ```
 
-⚠️ **This posts real comments on the PR.** Only run it against repos you own or have been
-asked to review. See the [Agent Guide "Do NOT" list](../AGENTS.md#do-not).
+In the dashboard, choose an open request and press Enter to preview it. The CLI uses `--publish` to authorize remote writes. The model endpoint receives the diff and selected context for either mode.
 
 ## Next steps
 

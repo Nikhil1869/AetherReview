@@ -18,9 +18,17 @@ export interface PushJob {
 }
 
 export type Severity = "critical" | "warning" | "info";
-export type Category = "security" | "bug" | "perf" | "style" | "maintainability";
+export type Category =
+  | "security"
+  | "bug"
+  | "perf"
+  | "style"
+  | "maintainability"
+  | "reliability"
+  | "testing";
 
 export interface Finding {
+  id?: string;
   file: string;
   line: number;
   severity: Severity;
@@ -107,6 +115,7 @@ export interface MrInfo {
   sourceBranch: string;
   targetBranch: string;
   headSha: string;
+  changedFiles?: number;
   diffRefs: DiffRefs;
 }
 

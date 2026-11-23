@@ -7,7 +7,7 @@ import Spinner from "ink-spinner";
 import TextInput from "ink-text-input";
 import React, { useEffect, useState } from "react";
 
-import { DEFAULT_TOKEN_LIMIT } from "../engine/config.js";
+import { DEFAULT_TOKEN_LIMIT, isLoopback, parseReviewerEndpoint } from "../engine/config.js";
 import { detectLocalModels, PROVIDERS, type Provider } from "../engine/providers.js";
 import { ACCENT, DIM } from "./theme.js";
 
@@ -28,6 +28,7 @@ export function ModelPicker({ onDone }: { onDone: (choice: ModelChoice) => void 
   const [models, setModels] = useState<string[]>([]);
   const [model, setModel] = useState("");
   const [customUrl, setCustomUrl] = useState("");
+  const [endpointError, setEndpointError] = useState(false);
   const [key, setKey] = useState("");
   const [keyError, setKeyError] = useState<string | null>(null);
   const [rejectedKey, setRejectedKey] = useState<string | null>(null);
@@ -154,7 +155,8 @@ export function ModelPicker({ onDone }: { onDone: (choice: ModelChoice) => void 
             onSubmit={(v) => {
               if (!v.trim()) return;
               setModel(v.trim());
-              if (provider?.local) finishLocal(v.trim());
+              const endpoint = provider?.id === "custom" ? parseReviewerEndpoint(customUrl) : null;
+              if (provider?.local || (endpoint && isLoopback(endpoint))) finishLocal(v.trim());
               else setStep("key");
             }}
           />
@@ -167,13 +169,15 @@ export function ModelPicker({ onDone }: { onDone: (choice: ModelChoice) => void 
     return (
       <Box flexDirection="column">
         <Text bold>OpenAI-compatible base URL</Text>
+        {endpointError ? <Text color={DIM}>use HTTPS or a loopback HTTP address</Text> : null}
         <Box>
           <Text color={ACCENT}>{"❯ "}</Text>
           <TextInput
             value={customUrl}
             onChange={setCustomUrl}
             onSubmit={(v) => {
-              if (!v.trim()) return;
+              if (!parseReviewerEndpoint(v.trim())) return setEndpointError(true);
+              setEndpointError(false);
               setCustomUrl(v.trim());
               setStep("customModel");
             }}
@@ -256,6 +260,7 @@ async function validateKey(provider: Provider | null, key: string): Promise<stri
   try {
     const r = await fetch(`${provider.baseUrl.replace(/\/$/, "")}/models`, {
       headers: { Authorization: `Bearer ${key}` },
+      redirect: "error",
       signal: AbortSignal.timeout(8000),
     });
     if (r.ok) return null;

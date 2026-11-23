@@ -1,21 +1,22 @@
 /** Dashboard for the chosen repo: opened/closed PR lists fetched live, with the
- * watcher auto-reviewing new PRs and new pushes to this repo.
- * Keys: enter review · v view review · tab switch list · R refresh · r change repo · s settings. */
+ * opt-in watcher for new PRs and pushes. */
 
 import { Box, Text, useApp, useInput } from "ink";
 import Spinner from "ink-spinner";
 import React, { useCallback, useEffect, useRef, useState } from "react";
+import { stripVTControlCharacters } from "node:util";
 
 import {
   loadConfig,
   loadCredentials,
+  parseReviewerEndpoint,
   resetLogin,
   reviewerConfigured,
   reviewerSettings,
   reviewTokenLimit,
   updateConfig,
 } from "../engine/config.js";
-import { runReview } from "../engine/pipeline.js";
+import { runReview, type ReviewOutcome } from "../engine/pipeline.js";
 import { fetchPrList, type PrSummary } from "../engine/viewer.js";
 import { watch } from "../engine/watch.js";
 import { PrList, type PrStatus } from "./dashboard/PrList.js";
@@ -34,7 +35,9 @@ type Overlay =
   | "model"
   | "repos"
   | "confirmReset"
-  | "viewReview";
+  | "viewReview"
+  | "preview"
+  | "confirmWatch";
 
 type Tab = "open" | "closed";
 
@@ -61,15 +64,21 @@ export function Dashboard({
   const [model, setModel] = useState(reviewerSettings().model);
   const [passes, setPasses] = useState(reviewerSettings().passes);
   const [tokenLimit, setTokenLimit] = useState(reviewTokenLimit());
-  const [pendingPr, setPendingPr] = useState<number | null>(null);
+  const [pendingPr, setPendingPr] = useState<{ number: number; publish: boolean } | null>(null);
   const [viewPr, setViewPr] = useState<number | null>(null);
-  const [watching, setWatching] = useState(false);
+  const [preview, setPreview] = useState<Extract<ReviewOutcome, { status: "completed" }> | null>(
+    null,
+  );
+  const [previewIndex, setPreviewIndex] = useState(0);
+  const [watchTargets, setWatchTargets] = useState<string[] | null>(null);
   const [refreshing, setRefreshing] = useState(false);
   const abortRef = useRef<AbortController | null>(null);
 
   const creds = loadCredentials();
   const target = `${repo.forge}:${repo.projectId}`;
+  const candidateTargets = [...new Set([target, ...(loadConfig().watch?.targets ?? [])])];
   const interval = loadConfig().watch?.interval ?? 30;
+  const endpoint = parseReviewerEndpoint(reviewerSettings().baseUrl);
 
   const setStatus = useCallback((prNumber: number, s: PrStatus) => {
     setStatuses((prev) => ({ ...prev, [prNumber]: s }));
@@ -89,7 +98,7 @@ export function Dashboard({
       if (failed) setStatus(Number(failed[1]), { status: "failed", detail: msg.slice(0, 60) });
       // early pipeline exits — without these the row sticks on "reviewing…"
       const skipped = msg.match(
-        /pr=(\d+) (nothing to review|all changed files excluded|superseded|already locked)/,
+        /pr=(\d+) (nothing to review|all changed files excluded|superseded|already locked|no patches available|cancelled)/,
       );
       if (skipped) setStatus(Number(skipped[1]), { status: "done", detail: skipped[2] });
     },
@@ -166,15 +175,13 @@ export function Dashboard({
     }
   }, [repo.forge, repo.projectId]);
 
-  // the session repo is always watched: new PRs and new pushes get reviewed.
-  // Extra repos added under settings → auto-review keep being watched too.
   useEffect(() => {
-    const targets = [...new Set([target, ...(loadConfig().watch?.targets ?? [])])];
+    if (!watchTargets) return;
     const ctrl = new AbortController();
     abortRef.current = ctrl;
-    setWatching(true);
-    void watch(targets, {
-      intervalSec: loadConfig().watch?.interval ?? 30,
+    void watch(watchTargets, {
+      intervalSec: interval,
+      publish: true,
       log: reviewLog,
       signal: ctrl.signal,
       onJob: (job) => {
@@ -183,50 +190,42 @@ export function Dashboard({
           void refreshOpen();
         }
       },
-    })
-      .catch((e) => addEvent(`watcher stopped: ${e instanceof Error ? e.message : e}`))
-      .finally(() => setWatching(false));
-    return () => ctrl.abort();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [target]);
+    }).catch(() => {
+      if (ctrl.signal.aborted) return;
+      addEvent("watcher stopped after an error");
+      setWatchTargets(null);
+    });
+    return () => {
+      ctrl.abort();
+      abortRef.current = null;
+    };
+  }, [watchTargets, interval, target, addEvent, refreshOpen, reviewLog, setStatus]);
 
   const runOn = useCallback(
-    (prNumber: number) => {
+    (prNumber: number, publish: boolean) => {
       setStatus(prNumber, { status: "running", detail: "fetching…" });
-      void (async () => {
-        try {
-          const { getForgeClient } = await import("../engine/forge.js");
-          const gl = await getForgeClient(repo.forge);
-          let headSha: string;
-          try {
-            headSha = (await gl.getMr(repo.projectId, prNumber)).headSha;
-          } finally {
-            await gl.close();
-          }
-          await runReview(
-            { forge: repo.forge, projectId: repo.projectId, prNumber, headSha },
-            reviewLog,
-          );
-        } catch (e) {
-          setStatus(prNumber, {
-            status: "failed",
-            detail: e instanceof Error ? e.message.slice(0, 60) : "error",
-          });
+      void runReview({ forge: repo.forge, projectId: repo.projectId, prNumber }, reviewLog, {
+        publish,
+      }).then((outcome) => {
+        if (outcome.status === "completed" && !publish) {
+          setPreview(outcome);
+          setPreviewIndex(0);
+          setOverlay((current) => (current === "none" ? "preview" : current));
         }
-      })();
+      });
     },
     [repo.forge, repo.projectId, reviewLog, setStatus],
   );
 
   const startReview = useCallback(
-    (prNumber: number) => {
+    (prNumber: number, publish = false) => {
       if (!reviewerConfigured()) {
         // safety net — model is normally set once right after login
-        setPendingPr(prNumber);
+        setPendingPr({ number: prNumber, publish });
         setOverlay("model");
         return;
       }
-      runOn(prNumber);
+      runOn(prNumber, publish);
     },
     [runOn],
   );
@@ -249,6 +248,13 @@ export function Dashboard({
           setViewPr(selected.iid);
           setOverlay("viewReview");
         }
+      } else if (input === "p" && tab === "open" && selected) {
+        startReview(selected.iid, true);
+      } else if (input === "a") {
+        if (watchTargets) {
+          abortRef.current?.abort();
+          setWatchTargets(null);
+        } else setOverlay("confirmWatch");
       } else if (input === "v" && selected) {
         setViewPr(selected.iid);
         setOverlay("viewReview");
@@ -260,6 +266,17 @@ export function Dashboard({
       } else if (input === "s") {
         setOverlay("settings");
       }
+    } else if (overlay === "confirmWatch") {
+      if (key.return) setWatchTargets(candidateTargets);
+      if (key.return || key.escape) setOverlay("none");
+    } else if (overlay === "preview") {
+      if (key.escape) setOverlay("none");
+      if (key.downArrow || input === "j") {
+        setPreviewIndex((index) =>
+          Math.min(index + 1, Math.max(0, (preview?.result.findings.length ?? 0) - 1)),
+        );
+      }
+      if (key.upArrow || input === "k") setPreviewIndex((index) => Math.max(0, index - 1));
     } else if (overlay === "settings" && key.escape) {
       setOverlay("none");
     } else if (overlay === "general" && key.escape) {
@@ -288,10 +305,67 @@ export function Dashboard({
             setTokenLimit(c.tokenLimit);
             setOverlay("none");
             if (pendingPr != null) {
-              runOn(pendingPr);
+              runOn(pendingPr.number, pendingPr.publish);
               setPendingPr(null);
             }
           }}
+        />
+      </Box>
+    );
+  }
+
+  if (overlay === "confirmWatch") {
+    return (
+      <Box flexDirection="column">
+        <Header subtitle="authorize automatic posting" />
+        <Text>
+          post reviews for new PRs and branch pushes in these repositories during this session?
+        </Text>
+        {candidateTargets.map((name) => (
+          <Text key={name} color={DIM}>
+            {stripVTControlCharacters(name)}
+          </Text>
+        ))}
+        <KeyHint
+          keys={[
+            ["enter", "authorize"],
+            ["esc", "cancel"],
+          ]}
+        />
+      </Box>
+    );
+  }
+
+  if (overlay === "preview" && preview) {
+    const finding = preview.result.findings[previewIndex];
+    return (
+      <Box flexDirection="column">
+        <Header subtitle={`review preview · ${preview.headSha.slice(0, 12)}`} />
+        <Text>{preview.result.summary}</Text>
+        {preview.omittedFiles ? (
+          <Text color={DIM}>{preview.omittedFiles} changed file(s) unavailable or over budget</Text>
+        ) : null}
+        {finding ? (
+          <Box marginY={1} flexDirection="column">
+            <Text color={ACCENT}>
+              {stripVTControlCharacters(
+                `${finding.severity} · ${finding.file}:${finding.line} · ${finding.title}`,
+              )}
+            </Text>
+            <Text>{stripVTControlCharacters(finding.comment)}</Text>
+            {finding.evidence ? (
+              <Text color={DIM}>{stripVTControlCharacters(finding.evidence)}</Text>
+            ) : null}
+            {finding.suggestion ? (
+              <Text>{stripVTControlCharacters(finding.suggestion)}</Text>
+            ) : null}
+          </Box>
+        ) : null}
+        <KeyHint
+          keys={[
+            ["↑↓", "browse findings"],
+            ["esc", "back"],
+          ]}
         />
       </Box>
     );
@@ -375,12 +449,13 @@ export function Dashboard({
         repo <Text color={ACCENT}>{repo.projectId}</Text> · {repo.forge}
         {forgeUser ? ` ✓ ${forgeUser}` : ""} · model <Text color={ACCENT}>{model}</Text>
       </Text>
-      {watching ? (
+      {endpoint ? <Text color={DIM}>review content sent to {endpoint.origin}</Text> : null}
+      {watchTargets ? (
         <Text color={DIM}>
           <Text color={ACCENT}>
             <Spinner type="dots" />
           </Text>
-          {" watching — new PRs & pushes get reviewed"}
+          {" auto-posting reviews"}
           {` · every ${interval}s`}
         </Text>
       ) : null}
@@ -421,7 +496,9 @@ export function Dashboard({
       <Box marginTop={1} borderStyle="round" borderColor={DIM} paddingX={1}>
         <KeyHint
           keys={[
-            ["enter", tab === "open" ? "review PR" : "view review"],
+            ["enter", tab === "open" ? "preview review" : "view review"],
+            ...(tab === "open" ? ([["p", "post review"]] as [string, string][]) : []),
+            ["a", watchTargets ? "stop auto-posting" : "authorize auto-posting"],
             ["v", "view review"],
             ["tab", "switch list"],
             ["R", "refresh"],

@@ -28,6 +28,24 @@ const diffs: FileDiff[] = [
 ];
 
 describe("buildContext", () => {
+  it("does not fetch excluded files discovered as imports or callers", async () => {
+    const gl = makeFakeForge({
+      files: {
+        "src/a.ts": changed,
+        "src/util.ts": "excluded",
+        "src/private/caller.ts": "excluded",
+      },
+      blobs: { doThing: [{ path: "src/private/caller.ts" }] },
+    });
+    const bundle = await buildContext(gl, "o/r", "head", diffs, {
+      ...norms,
+      exclude: ["util.ts", "**/private/**"],
+    });
+    expect(bundle.files.map((file) => file.path)).toEqual(["src/a.ts"]);
+    expect(gl.getFile).not.toHaveBeenCalledWith("o/r", "src/util.ts", "head");
+    expect(gl.getFile).not.toHaveBeenCalledWith("o/r", "src/private/caller.ts", "head");
+  });
+
   it("gathers changed file + import + caller + test, tagged by reason", async () => {
     const gl = makeFakeForge({
       files: {

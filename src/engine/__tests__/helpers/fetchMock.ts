@@ -8,6 +8,7 @@ export interface FakeResponseSpec {
   status?: number; // defaults 200
   json?: unknown;
   text?: string;
+  headers?: HeadersInit;
 }
 
 export type FetchHandler = (url: string, init?: RequestInit) => FakeResponseSpec;
@@ -22,6 +23,7 @@ export function installFetch(handler: FetchHandler) {
     return {
       ok: spec.ok ?? status < 400,
       status,
+      headers: new Headers(spec.headers),
       json: async () => spec.json ?? {},
       text: async () => spec.text ?? (spec.json != null ? JSON.stringify(spec.json) : ""),
     } as unknown as Response;

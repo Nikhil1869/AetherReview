@@ -22,7 +22,9 @@ import {
 const HOME = process.env.AETHERREVIEW_HOME as string;
 const ENV_KEYS = [
   "GITHUB_TOKEN",
+  "GITHUB_URL",
   "GITLAB_TOKEN",
+  "GITLAB_URL",
   "REVIEWER_API_KEY",
   "GEMINI_API_KEY",
   "REVIEWER_MODEL",
@@ -61,10 +63,18 @@ describe("credential store", () => {
 });
 
 describe("resolveToken", () => {
-  it("prefers the stored token", () => {
+  it("requires an explicit token when changing the configured forge origin", () => {
+    setForge("gitlab", { token: "stored", url: "https://gitlab.example.test" });
+    process.env.GITLAB_URL = "https://other.example.test";
+    expect(resolveToken("gitlab")).toBeUndefined();
+    process.env.GITLAB_TOKEN = "explicit";
+    expect(resolveToken("gitlab")).toBe("explicit");
+  });
+
+  it("prefers the environment token over a stored token", () => {
     setForge("github", { token: "stored" });
     process.env.GITHUB_TOKEN = "fromenv";
-    expect(resolveToken("github")).toBe("stored");
+    expect(resolveToken("github")).toBe("fromenv");
   });
   it("falls back to the env var when no stored token", () => {
     process.env.GITHUB_TOKEN = "fromenv";
@@ -76,6 +86,17 @@ describe("resolveToken", () => {
 });
 
 describe("reviewerSettings", () => {
+  it("keeps stored and legacy reviewer keys scoped to their endpoint origins", () => {
+    updateConfig("reviewer", { api_key: "saved", base_url: "https://provider.example.test/v1" });
+    process.env.GEMINI_API_KEY = "gemini";
+    expect(reviewerSettings().apiKey).toBe("saved");
+    process.env.REVIEWER_BASE_URL = "http://127.0.0.1:1234/v1";
+    expect(reviewerSettings().apiKey).toBe("");
+    process.env.REVIEWER_BASE_URL = "https://generativelanguage.googleapis.com/v1beta/openai/";
+    expect(reviewerSettings().apiKey).toBe("gemini");
+    process.env.REVIEWER_API_KEY = "explicit";
+    expect(reviewerSettings().apiKey).toBe("explicit");
+  });
   it("uses defaults when nothing is configured", () => {
     const s = reviewerSettings();
     expect(s.model).toBe("gemini-2.5-flash");
@@ -127,6 +148,23 @@ describe("reviewerConfigured", () => {
   it("is true with a local base url and no key", () => {
     updateConfig("reviewer", { base_url: "http://localhost:11434/v1" });
     expect(reviewerConfigured()).toBe(true);
+  });
+
+  it.each(["http://127.0.0.1:1234/v1", "http://[::1]:1234/v1"])(
+    "accepts keyless loopback %s",
+    (base_url) => {
+      updateConfig("reviewer", { base_url });
+      expect(reviewerConfigured()).toBe(true);
+    },
+  );
+
+  it.each([
+    "https://localhost.example.test/v1",
+    "http://192.0.2.1/v1",
+    "https://user:password@localhost/v1",
+  ])("rejects unsafe or unauthenticated endpoints %s", (base_url) => {
+    updateConfig("reviewer", { base_url });
+    expect(reviewerConfigured()).toBe(false);
   });
 });
 

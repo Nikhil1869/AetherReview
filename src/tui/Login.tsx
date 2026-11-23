@@ -92,6 +92,7 @@ async function validateGitlab(url: string, token: string): Promise<string | null
   try {
     const r = await fetch(`${url}/api/v4/user`, {
       headers: { "PRIVATE-TOKEN": token },
+      redirect: "error",
       signal: AbortSignal.timeout(15000),
     });
     return r.ok ? ((await r.json()) as any).username : null;

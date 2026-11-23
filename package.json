@@ -1,13 +1,16 @@
 {
   "name": "aether-review",
   "version": "2.1.0",
-  "description": "Local AI code reviewer for GitHub & GitLab — any model, no cloud",
+  "description": "Local-first AI code reviews for Git changes, GitHub PRs, and GitLab MRs",
   "scripts": {
     "test": "vitest run",
     "test:watch": "vitest",
     "test:cov": "vitest run --coverage",
     "typecheck": "tsc --noEmit",
     "build": "tsup",
+    "prepack": "npm run build",
+    "test:package": "node scripts/smoke-package.mjs",
+    "bench:local": "node scripts/smoke-package.mjs --benchmark",
     "lint": "eslint .",
     "lint:fix": "eslint . --fix",
     "format": "prettier --write .",
@@ -34,7 +37,7 @@
     "aetherreview": "dist/cli.js"
   },
   "dependencies": {
-    "@modelcontextprotocol/sdk": "^1.29.0",
+    "@modelcontextprotocol/sdk": "^1.32.2",
     "commander": "^15.0.0",
     "ink": "^7.0.5",
     "ink-select-input": "^6.2.0",
@@ -43,7 +46,7 @@
     "openai": "^6.42.0",
     "react": "^19.2.7",
     "yaml": "^2.9.0",
-    "zod": "^4.4.3"
+    "zod": "^4.6.7"
   },
   "devDependencies": {
     "@eslint/js": "^10.0.1",
@@ -69,12 +72,12 @@
   "allowScripts": {
     "esbuild@0.27.7": true
   },
-  "homepage": "https://github.com/nikhil-suraj/aether-review#readme",
+  "homepage": "https://github.com/Nikhil1869/AetherReview#readme",
   "repository": {
     "type": "git",
-    "url": "git+https://github.com/nikhil-suraj/aether-review.git"
+    "url": "git+https://github.com/Nikhil1869/AetherReview.git"
   },
   "bugs": {
-    "url": "https://github.com/nikhil-suraj/aether-review/issues"
+    "url": "https://github.com/Nikhil1869/AetherReview/issues"
   }
 }

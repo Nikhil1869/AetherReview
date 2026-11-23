@@ -213,6 +213,8 @@ export async function refreshGithubToken(): Promise<string | undefined> {
 /** Refresh-before-use entry point for the forge clients. App credentials mint
  * installation tokens; non-oauth creds fall through to sync resolution. */
 export async function ensureFreshGithubToken(): Promise<string | undefined> {
+  if (process.env.GITHUB_TOKEN !== undefined) return process.env.GITHUB_TOKEN;
+  if (process.env.GITHUB_URL && !resolveToken("github")) return undefined;
   const cred = loadCredentials().github;
   if (cred?.method === "app") {
     const { ensureFreshAppToken } = await import("./githubApp.js");

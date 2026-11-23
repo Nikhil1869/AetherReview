@@ -1,7 +1,7 @@
 /** Forge clients. GitHub default backend is MCP (see forgeMcp.ts); REST
  * clients here cover GitLab and the GITHUB_BACKEND=rest escape hatch. */
 
-import { resolveToken, loadCredentials } from "./config.js";
+import { gitlabUrl, resolveToken } from "./config.js";
 import type { DiffRefs, FileDiff, MrInfo } from "./types.js";
 
 export const STATUS_MARKER = "<!-- ct:status -->";
@@ -22,6 +22,18 @@ export function describeError(e: unknown): string {
   if (!(e instanceof Error)) return String(e);
   const cause = e.cause instanceof Error ? e.cause.message : e.cause ? String(e.cause) : "";
   return cause && !e.message.includes(cause) ? `${e.message} (${cause})` : e.message;
+}
+
+export async function readDiffPages<T>(
+  readPage: (page: number) => Promise<{ files: T[]; more: boolean }>,
+): Promise<T[]> {
+  const diffs: T[] = [];
+  for (let page = 1; page <= 30; page++) {
+    const { files, more } = await readPage(page);
+    diffs.push(...files);
+    if (!more) return diffs;
+  }
+  throw new Error("The forge diff exceeded the review pagination limit.");
 }
 
 export interface ForgeClient {
@@ -46,6 +58,7 @@ export interface ForgeClient {
     newLine: number,
     body: string,
     refs: DiffRefs,
+    oldPath?: string,
   ): Promise<boolean>;
   addLabels(projectId: string, prNumber: number, labels: string[]): Promise<void>;
   removeLabels(projectId: string, prNumber: number, labels: string[]): Promise<void>;
@@ -57,7 +70,7 @@ async function http(
   url: string,
   init: RequestInit & { headers: Record<string, string> },
 ): Promise<Response> {
-  return fetch(url, { ...init, signal: AbortSignal.timeout(30000) });
+  return fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(30000) });
 }
 
 // ---- GitLab (REST) -------------------------------------------------------------
@@ -67,9 +80,7 @@ export class GitLabClient implements ForgeClient {
   private headers: Record<string, string>;
 
   constructor() {
-    const cred = loadCredentials().gitlab ?? {};
-    const url = cred.url ?? process.env.GITLAB_URL ?? "https://gitlab.com";
-    this.base = `${url}/api/v4`;
+    this.base = `${gitlabUrl()}/api/v4`;
     this.headers = { "PRIVATE-TOKEN": resolveToken("gitlab") ?? "" };
   }
 
@@ -90,21 +101,29 @@ export class GitLabClient implements ForgeClient {
       sourceBranch: d.source_branch,
       targetBranch: d.target_branch,
       headSha: d.sha ?? d.diff_refs?.head_sha ?? "",
+      changedFiles: /^\d+\+?$/.test(d.changes_count ?? "")
+        ? Number(String(d.changes_count).replace(/\+$/, ""))
+        : undefined,
       diffRefs: d.diff_refs,
     };
   }
 
   async getDiffs(projectId: string, prNumber: number): Promise<FileDiff[]> {
-    const r = await http(
-      `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}/diffs`,
-      { headers: this.headers },
-    );
-    if (!r.ok) throw new Error(`gitlab get_diffs ${r.status}`);
-    const items = (await r.json()) as any[];
+    const items = await readDiffPages(async (page) => {
+      const r = await http(
+        `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}/diffs?per_page=100&page=${page}`,
+        { headers: this.headers },
+      );
+      if (!r.ok) throw new Error(`gitlab get_diffs ${r.status}`);
+      const files = (await r.json()) as any[];
+      const nextPage = r.headers.get("x-next-page");
+      const more = nextPage ? Number(nextPage) > page : files.length === 100;
+      return { files, more };
+    });
     return items.map((d) => ({
       newPath: d.new_path,
       oldPath: d.old_path,
-      diff: d.diff ?? "",
+      diff: d.collapsed || d.too_large ? "" : (d.diff ?? ""),
       newFile: !!d.new_file,
       deletedFile: !!d.deleted_file,
     }));
@@ -179,6 +198,7 @@ export class GitLabClient implements ForgeClient {
     newLine: number,
     body: string,
     refs: DiffRefs,
+    oldPath = filePath,
   ): Promise<boolean> {
     const params = new URLSearchParams({
       body,
@@ -187,7 +207,7 @@ export class GitLabClient implements ForgeClient {
       "position[start_sha]": refs.start_sha,
       "position[head_sha]": refs.head_sha,
       "position[new_path]": filePath,
-      "position[old_path]": filePath,
+      "position[old_path]": oldPath,
       "position[new_line]": String(newLine),
     });
     const r = await http(
@@ -259,16 +279,24 @@ export class GitHubRestClient implements ForgeClient {
       sourceBranch: d.head.ref,
       targetBranch: d.base.ref,
       headSha: d.head.sha,
+      changedFiles: typeof d.changed_files === "number" ? d.changed_files : undefined,
       diffRefs: { head_sha: d.head.sha, base_sha: d.base.sha, start_sha: d.base.sha },
     };
   }
 
   async getDiffs(projectId: string, prNumber: number): Promise<FileDiff[]> {
-    const r = await http(`${this.base}/repos/${projectId}/pulls/${prNumber}/files?per_page=100`, {
-      headers: this.headers,
+    const items = await readDiffPages(async (page) => {
+      const r = await http(
+        `${this.base}/repos/${projectId}/pulls/${prNumber}/files?per_page=100&page=${page}`,
+        {
+          headers: this.headers,
+        },
+      );
+      if (!r.ok) throw new Error(`github get_diffs ${r.status}`);
+      const files = (await r.json()) as any[];
+      return { files, more: /rel="next"/.test(r.headers.get("link") ?? "") };
     });
-    if (!r.ok) throw new Error(`github get_diffs ${r.status}`);
-    return ((await r.json()) as any[]).map((f) => ({
+    return items.map((f) => ({
       newPath: f.filename,
       oldPath: f.previous_filename ?? f.filename,
       diff: f.patch ?? "",
@@ -278,8 +306,11 @@ export class GitHubRestClient implements ForgeClient {
   }
 
   async getFile(projectId: string, path: string, ref: string): Promise<string | null> {
+    const segments = path.split("/");
+    if (segments.some((part) => !part || part === "." || part === "..")) return null;
+    const encoded = segments.map(encodeURIComponent).join("/");
     const r = await http(
-      `${this.base}/repos/${projectId}/contents/${path}?ref=${encodeURIComponent(ref)}`,
+      `${this.base}/repos/${projectId}/contents/${encoded}?ref=${encodeURIComponent(ref)}`,
       { headers: { ...this.headers, Accept: "application/vnd.github.raw" } },
     );
     return r.ok ? r.text() : null;

@@ -10,6 +10,7 @@ import {
   type ForgeClient,
 } from "./forge.js";
 import { listCommitCommentBodies, postCommitComment } from "./forgeCommits.js";
+import { markdownText } from "./report.js";
 import type { DiffRefs, FileDiff, Finding, Forge, ReviewResult, Severity } from "./types.js";
 
 const LABEL: Record<Severity, string> = {
@@ -22,61 +23,16 @@ const EMOJI: Record<Severity, string> = { critical: "🛑", warning: "⚠️", i
 
 const MARKER_RE = /<!-- ct:f:(.+?):(\d+) -->/g;
 const LINE_TOLERANCE = 3;
-const SNAP_TOLERANCE = 10;
-const HUNK_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
-
-/** New-side line numbers visible in a unified diff: added lines (commentable +
- * suggestable) and context lines (commentable). */
-function diffLines(patch: string): { added: Set<number>; visible: Set<number> } {
-  const added = new Set<number>();
-  const visible = new Set<number>();
-  let newLine = 0;
-  let inHunk = false;
-  for (const line of patch.split("\n")) {
-    const hunk = line.match(HUNK_RE);
-    if (hunk) {
-      newLine = Number(hunk[1]);
-      inHunk = true;
-      continue;
-    }
-    if (!inHunk || line.startsWith("-") || line.startsWith("\\")) continue;
-    if (line.startsWith("+")) added.add(newLine);
-    visible.add(newLine);
-    newLine++;
-  }
-  return { added, visible };
-}
-
-/** Snap finding lines onto the diff so inline anchoring succeeds. LLMs drift a
- * few lines off the hunk; the forge rejects lines outside it. A snapped line
- * loses its suggestedCode — the replacement was written for the original line. */
-export function snapFindings(diffs: FileDiff[], findings: Finding[]): Finding[] {
-  const byFile = new Map<string, { added: Set<number>; visible: Set<number> }>();
-  for (const d of diffs) {
-    if (d.diff && !d.deletedFile) byFile.set(d.newPath, diffLines(d.diff));
-  }
-  return findings.map((f) => {
-    const lines = byFile.get(f.file);
-    if (!lines || lines.added.has(f.line)) return f;
-    let best: number | null = null;
-    for (const cand of lines.visible) {
-      const dist = Math.abs(cand - f.line);
-      if (dist <= SNAP_TOLERANCE && (best === null || dist < Math.abs(best - f.line))) best = cand;
-    }
-    if (best === null) return f; // nothing nearby — finalize falls back to a plain note
-    return { ...f, line: best, suggestedCode: undefined };
-  });
-}
 
 function commentBody(f: Finding, botName: string): string {
   const emoji = botName.toLowerCase().includes("turtle") ? "🐢" : "🤖";
   let body =
     `${findingMarker(f.file, f.line)}\n` +
-    `${EMOJI[f.severity]} **${f.title}** · \`${f.category}\` · confidence ${f.confidence.toFixed(2)}\n\n${f.comment}`;
+    `${EMOJI[f.severity]} **${markdownText(f.title)}** · \`${f.category}\` · confidence ${f.confidence.toFixed(2)}\n\n${markdownText(f.comment)}`;
   if (f.suggestedCode) {
     body += "\n\n```suggestion\n" + f.suggestedCode + "\n```";
   } else if (f.suggestion) {
-    body += `\n\n**Suggestion**\n\n${f.suggestion}`;
+    body += `\n\n**Suggestion**\n\n${markdownText(f.suggestion)}`;
   }
   return body + `\n\n---\n_${emoji} ${botName}_`;
 }
@@ -90,6 +46,7 @@ export async function finalize(
   kept: Finding[],
   statusId: number | string,
   log: (msg: string) => void = () => {},
+  oldPaths?: ReadonlyMap<string, string>,
 ): Promise<void> {
   const botName = reviewerSettings().botName;
   const botEmoji = botName.toLowerCase().includes("turtle") ? "🐢" : "🤖";
@@ -115,12 +72,13 @@ export async function finalize(
       f.line,
       commentBody(f, botName),
       refs,
+      oldPaths?.get(f.file) || f.file,
     );
     if (!ok) {
       await gl.createNote(
         projectId,
         prNumber,
-        `_(couldn't anchor inline — ${f.file}:${f.line})_\n\n${commentBody(f, botName)}`,
+        `_(couldn't anchor inline — ${markdownText(f.file)}:${f.line})_\n\n${commentBody(f, botName)}`,
       );
     }
   }
@@ -134,10 +92,13 @@ export async function finalize(
         (a, b) =>
           RANK[b.severity] - RANK[a.severity] || a.file.localeCompare(b.file) || a.line - b.line,
       )
-      .map((f) => `| ${EMOJI[f.severity]} ${f.severity} | \`${f.file}:${f.line}\` | ${f.title} |`)
+      .map(
+        (f) =>
+          `| ${EMOJI[f.severity]} ${f.severity} | ${markdownText(f.file)}:${f.line} | ${markdownText(f.title)} |`,
+      )
       .join("\n");
     summary =
-      `## ${botEmoji} ${botName}\n\n${result.summary}\n\n` +
+      `## ${botEmoji} ${botName}\n\n${markdownText(result.summary)}\n\n` +
       `### Findings\n\n` +
       `| severity | location | finding |\n|---|---|---|\n${rows}\n\n` +
       `**${counts.critical} critical · ${counts.warning} warning · ${counts.info} info**`;
@@ -255,7 +216,7 @@ export async function finalizeCommit(
         .map((f) => `| ${EMOJI[f.severity]} ${f.severity} | \`${f.file}:${f.line}\` | ${f.title} |`)
         .join("\n");
       summary =
-        `## ${botEmoji} ${botName} — push to \`${branch}\`\n\n${result.summary}\n\n` +
+        `## ${botEmoji} ${botName} — push to ${markdownText(branch)}\n\n${markdownText(result.summary)}\n\n` +
         `### Findings\n\n` +
         `| severity | location | finding |\n|---|---|---|\n${rows}\n\n` +
         `**${counts.critical} critical · ${counts.warning} warning · ${counts.info} info**`;

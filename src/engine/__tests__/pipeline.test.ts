@@ -30,7 +30,7 @@ const job = (over: Partial<{ projectId: string; headSha: string }> = {}) => ({
   forge: "github" as const,
   projectId: over.projectId ?? `o/r-${pid}`,
   prNumber: 1,
-  headSha: over.headSha ?? "h",
+  headSha: over.headSha ?? "headsha",
 });
 
 beforeEach(() => {
@@ -59,11 +59,61 @@ describe("runReview", () => {
       summary: "looks risky",
     });
 
-    await runReview(job());
+    await runReview(job(), () => {}, { publish: true });
     expect(fake.inline).toHaveLength(1);
     expect(fake.inline[0]).toMatchObject({ filePath: "a.ts", newLine: 2 });
     expect(fake.submitted).toHaveLength(1);
     expect(fake.labels.length).toBeGreaterThan(0);
+  });
+
+  it("returns preview results without performing any forge writes by default", async () => {
+    const fake = makeFakeForge({ diffs: [diff] });
+    ph.fake = fake;
+    vi.mocked(review).mockResolvedValue({ findings: [], summary: "from provider" });
+    const outcome = await runReview(job(), () => {});
+    expect(outcome).toMatchObject({
+      status: "completed",
+      headSha: "headsha",
+      result: { findings: [] },
+    });
+    for (const write of [
+      fake.postStatus,
+      fake.postInlineNote,
+      fake.createNote,
+      fake.editNote,
+      fake.submitReview,
+      fake.addLabels,
+      fake.removeLabels,
+    ]) {
+      expect(write).not.toHaveBeenCalled();
+    }
+  });
+
+  it("skips publishing if the head changes during analysis", async () => {
+    const fake = makeFakeForge({ diffs: [diff] });
+    ph.fake = fake;
+    vi.mocked(review).mockResolvedValue({ findings: [], summary: "from provider" });
+    vi.mocked(fake.getMr).mockResolvedValueOnce(await fake.getMr("o/r", 1));
+    vi.mocked(fake.getMr).mockResolvedValueOnce({
+      headSha: "different-head",
+      sourceBranch: "feature",
+      targetBranch: "main",
+      diffRefs: { head_sha: "different-head", base_sha: "basesha", start_sha: "startsha" },
+    });
+    expect(await runReview(job(), () => {}, { publish: true })).toMatchObject({
+      status: "skipped",
+    });
+    expect(fake.postStatus).not.toHaveBeenCalled();
+    expect(fake.submitReview).not.toHaveBeenCalled();
+  });
+
+  it("fails a provider failure without writing a clean label or summary", async () => {
+    const fake = makeFakeForge({ diffs: [diff] });
+    ph.fake = fake;
+    vi.mocked(review).mockRejectedValue(new Error("Reviewer returned an invalid response."));
+    expect(await runReview(job(), () => {}, { publish: true })).toMatchObject({ status: "failed" });
+    expect(fake.addLabels).not.toHaveBeenCalled();
+    expect(fake.submitReview).not.toHaveBeenCalled();
   });
 
   it("skips a superseded head sha before opening a forge client", async () => {
@@ -116,7 +166,7 @@ describe("runReview", () => {
       ],
       summary: "ok",
     });
-    await runReview(job());
+    await runReview(job(), () => {}, { publish: true });
     expect(fake.inline).toHaveLength(0); // below default threshold 0.7
     expect(fake.labels).toContain("aether-review/clean");
   });

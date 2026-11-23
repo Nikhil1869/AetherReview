@@ -1,6 +1,6 @@
 import { afterEach, describe, expect, it, vi } from "vitest";
 
-import { finalize, finalizeCommit, snapFindings } from "../poster.js";
+import { finalize, finalizeCommit } from "../poster.js";
 import type { DiffRefs, FileDiff, Finding, ReviewResult } from "../types.js";
 import { makeFakeForge } from "./helpers/fakeForge.js";
 import { installFetch } from "./helpers/fetchMock.js";
@@ -20,39 +20,6 @@ const finding = (line: number): Finding => ({
   title: "t",
   comment: "c",
   suggestedCode: "fixed();",
-});
-
-describe("snapFindings", () => {
-  it("keeps a finding already on an added line (with its suggestedCode)", () => {
-    const [f] = snapFindings(diffs, [finding(2)]);
-    expect(f.line).toBe(2);
-    expect(f.suggestedCode).toBe("fixed();");
-  });
-
-  it("snaps a drifted line onto the nearest visible line and drops suggestedCode", () => {
-    const [f] = snapFindings(diffs, [finding(7)]); // nearest visible is 4 (dist 3 ≤ 10)
-    expect(f.line).toBe(4);
-    expect(f.suggestedCode).toBeUndefined();
-  });
-
-  it("drops suggestedCode when snapping onto a context (non-added) line", () => {
-    const [f] = snapFindings(diffs, [finding(3)]); // line 3 is visible context, not added
-    expect(f.line).toBe(3);
-    expect(f.suggestedCode).toBeUndefined();
-  });
-
-  it("leaves a finding untouched when nothing is within SNAP_TOLERANCE", () => {
-    const [f] = snapFindings(diffs, [finding(50)]);
-    expect(f.line).toBe(50);
-    expect(f.suggestedCode).toBe("fixed();");
-  });
-
-  it("leaves a finding for a file with no diff untouched", () => {
-    const f = finding(2);
-    const [out] = snapFindings(diffs, [{ ...f, file: "other.ts" }]);
-    expect(out.line).toBe(2);
-    expect(out.suggestedCode).toBe("fixed();");
-  });
 });
 
 describe("finalize — recheck note", () => {
@@ -182,7 +149,7 @@ describe("finalizeCommit", () => {
     expect(posts).toHaveLength(2);
     expect(bodies[0].body).toContain("<!-- ct:f:b.ts:2 -->");
     expect(bodies[1].body).toContain("<!-- ct:review -->");
-    expect(bodies[1].body).toContain("push to `feat`");
+    expect(bodies[1].body).toContain("push to feat");
   });
 
   it("doesn't repost the summary when the commit already has one", async () => {

@@ -13,25 +13,45 @@ export interface PrRef {
   label: string;
 }
 
+export function validProjectId(forge: "github" | "gitlab", projectId: string): boolean {
+  const segments = projectId.split("/");
+  if (!segments.every((part) => /^[\w.-]+$/.test(part) && part !== "." && part !== ".."))
+    return false;
+  return forge === "github"
+    ? segments.length === 2
+    : segments.length >= 2 || /^\d+$/.test(projectId);
+}
+
+function ref(forge: "github" | "gitlab", projectId: string, number: string): PrRef | null {
+  const prNumber = Number(number);
+  if (!validProjectId(forge, projectId) || !Number.isSafeInteger(prNumber) || prNumber < 1)
+    return null;
+  return {
+    forge,
+    projectId,
+    prNumber,
+    label: `${projectId}${forge === "github" ? "#" : "!"}${number}`,
+  };
+}
+
 export function parsePrLink(input: string): PrRef | null {
   const raw = input.trim();
-
-  const gh = raw.match(/github\.com\/([^/\s]+)\/([^/\s]+)\/pull\/(\d+)/);
-  if (gh) {
-    const projectId = `${gh[1]}/${gh[2]}`;
-    return { forge: "github", projectId, prNumber: Number(gh[3]), label: `${projectId}#${gh[3]}` };
-  }
-
-  const gl = raw.match(/https?:\/\/[^/\s]+\/(.+?)\/-\/merge_requests\/(\d+)/);
-  if (gl) {
-    const projectId = gl[1];
-    return { forge: "gitlab", projectId, prNumber: Number(gl[2]), label: `${projectId}!${gl[2]}` };
-  }
-
   const short = raw.match(/^([\w.-]+\/[\w.-]+)#(\d+)$/);
-  if (short) {
-    return { forge: "github", projectId: short[1], prNumber: Number(short[2]), label: raw };
+  if (short) return ref("github", short[1], short[2]);
+
+  let url: URL;
+  try {
+    url = new URL(raw);
+  } catch {
+    return null;
   }
+  if (!/^https?:$/.test(url.protocol) || url.username || url.password) return null;
+  if (url.hostname === "github.com") {
+    const gh = /^\/([^/]+\/[^/]+)\/pull\/(\d+)(?:\/|$)/.exec(url.pathname);
+    return gh ? ref("github", gh[1], gh[2]) : null;
+  }
+  const gl = /^\/(.+)\/-\/merge_requests\/(\d+)(?:\/|$)/.exec(url.pathname);
+  if (gl) return ref("gitlab", gl[1], gl[2]);
 
   return null;
 }

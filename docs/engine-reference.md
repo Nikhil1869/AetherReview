@@ -19,25 +19,24 @@ Jump to: [pipeline](#pipelinets) · [types](#typests) · [config](#configts) ·
 
 ## `pipeline.ts`
 
-The single review entrypoint — **everything goes through `runReview`.**
+Shared entry point for local Git and remote request reviews.
 
 ```ts
-runReview(job: Job, log?: Logger): Promise<void>
+runReview(target: ReviewTarget, log?: Logger, options?: ReviewOptions): Promise<ReviewOutcome>
 ```
 
 Sequence (see [Architecture › data flow](./architecture.md#the-review-data-flow) for the full diagram):
 
 1. `state.isLatest()` — bail if a newer head SHA superseded this job.
 2. `state.acquireLock()` — bail if this PR is already being reviewed.
-3. Get the forge client, post a "reviewing…" status note.
-4. `getMr` → `getDiffs` → `loadNorms` → `applyExcludes`. Empty diffs / all-excluded → status note and return.
+3. Get the forge client.
+4. `getMr` → `getDiffs` → `loadNorms` → `applyExcludes`. Empty or excluded changes return a skipped outcome.
 5. `buildContext` → `review` (LLM).
-6. Filter findings by `confidenceThreshold`, cap at `maxFindings`, then `snapFindings`.
-7. `finalize` to post.
+6. Filter source-validated findings by `confidenceThreshold` and cap at `maxFindings`.
+7. Recheck the remote head and base. Authorized runs post a status note and call `finalize`. Previews return their results locally.
 8. `finally`: `forge.close()` + `state.releaseLock()`. A failure calls `markFailed` (best-effort).
 
-`formatDiff()` (local) concatenates per-file diffs up to `limits.maxDiffChars`, appending a
-`(truncated — diff too large)` marker if it overflows.
+`reviewDiff()` selects whole file patches within the input budget. Local Git reviews read working-tree, index, or immutable commit snapshots and use the same norms and finding validation. The branch-push watcher calls `runPushReview`.
 
 > One PR's failure must never kill the watcher — that's why the whole body is wrapped and the
 > lock is released in `finally`. See [Invariant 7](./invariants.md#7-one-review-at-a-time-per-pr).
@@ -84,7 +83,7 @@ Key functions:
 | Function                                         | Purpose                                                                                                                                                                                                               |
 | ------------------------------------------------ | --------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
 | `loadCredentials()` / `setForge(forge, fields)`  | read / merge-write `credentials.json`.                                                                                                                                                                                |
-| `resolveToken(forge)`                            | store token, else `GITHUB_TOKEN`/`GITLAB_TOKEN`/`BITBUCKET_TOKEN` env.                                                                                                                                                |
+| `resolveToken(forge)`                            | environment token first, then the stored token.                                                                                                                                                                       |
 | `loadConfig()` / `updateConfig(section, fields)` | read / merge-write `config.json`.                                                                                                                                                                                     |
 | `reviewerSettings()`                             | resolved `{ apiKey, baseUrl, model, botName }`. **Env vars override the store** (`REVIEWER_API_KEY`, `GEMINI_API_KEY`, `REVIEWER_MODEL`, `REVIEWER_BASE_URL`, `REVIEWER_BOT_NAME`). Default model `gemini-2.5-flash`. |
 | `getBotName(model, custom?)`                     | maps a model to a display name (`claude`→"Claude review", etc.).                                                                                                                                                      |
@@ -275,32 +274,19 @@ Then it **ranks** (`changed > import > caller > test`) and **budgets** to `limit
 The LLM call. One OpenAI client for every provider (native or compat endpoint, including local
 servers).
 
-- `review(diffText, context, norms, log)` builds a system prompt (`BASE_PROMPT` + the repo's
-  `guidelines`, `examples`, and enabled `categories`), then a user message of
-  `renderContext(context)` + the diff.
+- `review(diff, context, norms, log, signal)` sends the selected contextual files, unified patches, and repository review preferences. Repository guidance is carried in the user message.
 - Calls `chat.completions.create` with `temperature: 0.2` and `response_format: json_object`;
   if that throws (some endpoints reject `response_format`), it retries without it.
-- **Reviewer output is hostile input.** The raw text is de-fenced, JSON-parsed (non-JSON →
-  empty result, logged), then every finding goes through `parseFinding`, which:
-  - rejects findings missing a file, a finite line, a valid severity, or a valid category;
-  - `coerceConfidence` clamps numbers to 0–1 and maps word confidences ("high"/"med"/"low") to
-    0.9 / 0.6 / 0.3;
-  - reads `suggested_code` → `suggestedCode`.
-
-Invalid findings are dropped silently. See [Invariant 6](./invariants.md#6-reviewer-output-is-hostile-input).
-Set `CT_DEBUG=1` to log the first 800 chars of the raw model response.
+- The general pass requires an object with a findings array and summary. Invalid envelopes fail the review with a diagnostic that omits the provider body.
+- Each accepted finding requires a valid severity, category, confidence, positive line number, and a quote of the full added line in the reported file. The validator ignores leading and trailing whitespace in the quote and retains the source line as evidence.
+- The reviewer emits stable finding identifiers and drops invalid findings silently. See [Invariant 6](./invariants.md#6-reviewer-output-is-hostile-input).
 
 ---
 
 ## `poster.ts`
 
-Posting + the dedup/anchoring logic. This is where the marker system is enforced.
+The poster takes source-validated findings from an authorized run and enforces marker deduplication.
 
-- `snapFindings(diffs, findings)` — LLMs drift a few lines off the hunk, and forges reject lines
-  outside the diff. This nudges each finding's line onto the nearest **visible** diff line within
-  `SNAP_TOLERANCE` (10). A snapped finding **loses its `suggestedCode`** (the replacement was
-  written for the original line). `diffLines()` parses a unified diff into added (commentable +
-  suggestable) and visible (commentable) new-side line numbers.
 - `finalize(gl, projectId, prNumber, refs, result, kept, statusId, log)`:
   1. Reads existing notes, extracts all `ct:f:FILE:LINE` markers.
   2. For each kept finding **not already posted** (`±LINE_TOLERANCE` = 3 → absorbs jitter),
