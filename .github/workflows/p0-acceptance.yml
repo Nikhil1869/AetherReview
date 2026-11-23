@@ -1,0 +1,40 @@
+name: P0 read-only forge acceptance
+on:
+  push:
+    branches: [verify/p0-forges-20261123]
+permissions:
+  contents: read
+  pull-requests: read
+jobs:
+  live:
+    runs-on: ubuntu-latest
+    timeout-minutes: 8
+    steps:
+      - uses: actions/checkout@v4
+        with:
+          persist-credentials: false
+      - uses: actions/setup-node@v4
+        with:
+          node-version: 24
+      - run: npm ci --no-audit
+      - name: Verify public fork anchors and authenticated preview
+        run: npx --no-install vitest run src/engine/__tests__/publicForges.live.ts --reporter=verbose --silent=false
+        env:
+          AETHER_LIVE_FORGES: "1"
+          AETHER_CI_READ_TOKEN: ${{ github.token }}
+      - name: Verify read-only MCP metadata and files
+        if: always()
+        env:
+          GITHUB_TOKEN: ${{ github.token }}
+        run: |
+          node_modules/.bin/esbuild src/engine/forgeMcp.ts --bundle --packages=external --platform=node --format=esm --outfile=node_modules/.cache/aether-mcp.mjs
+          node --input-type=module <<'JS'
+          import {GitHubMcpClient} from "./node_modules/.cache/aether-mcp.mjs";
+          const client=new GitHubMcpClient(true);
+          try {
+            const mr=await client.getMr("pallets/click",3924);
+            const files=await client.getDiffs("pallets/click",3924);
+            if(!mr.headSha || !files.some(f=>f.diff)) throw Error("Missing MCP diff");
+            console.log(JSON.stringify({head:mr.headSha,source:mr.sourceProjectId,files:files.length}));
+          } finally {await client.close();}
+          JS
