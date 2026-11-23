@@ -8,7 +8,13 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 import { resolveToken } from "./config.js";
-import { GitHubRestClient, REVIEW_MARKER, type ForgeClient, type Note } from "./forge.js";
+import {
+  GitHubRestClient,
+  readDiffPages,
+  REVIEW_MARKER,
+  type ForgeClient,
+  type Note,
+} from "./forge.js";
 import type { DiffRefs, FileDiff, MrInfo } from "./types.js";
 
 const MCP_URL = "https://api.githubcopilot.com/mcp/";
@@ -61,7 +67,7 @@ export class GitHubMcpClient implements ForgeClient {
       .join("");
     if (res.isError) {
       if (opts?.soft) return null;
-      throw new Error(`MCP ${tool} failed: ${text.slice(0, 300)}`);
+      throw new Error(`MCP ${tool} failed`);
     }
     try {
       return JSON.parse(text);
@@ -82,26 +88,28 @@ export class GitHubMcpClient implements ForgeClient {
       sourceBranch: d.head.ref,
       targetBranch: d.base.ref,
       headSha: d.head.sha,
+      changedFiles: typeof d.changed_files === "number" ? d.changed_files : undefined,
       diffRefs: { head_sha: d.head.sha, base_sha: d.base.sha, start_sha: d.base.sha },
     };
   }
 
   async getDiffs(projectId: string, prNumber: number): Promise<FileDiff[]> {
     const { owner, repo } = this.split(projectId);
-    const d = await this.call("pull_request_read", {
-      method: "get_files",
-      owner,
-      repo,
-      pullNumber: prNumber,
-      perPage: 100,
+    const perPage = 30;
+    const items = await readDiffPages(async (page) => {
+      const d = await this.call("pull_request_read", {
+        method: "get_files",
+        owner,
+        repo,
+        pullNumber: prNumber,
+        perPage,
+        page,
+      });
+      const files: any[] | undefined = Array.isArray(d) ? d : d?.files;
+      if (!Array.isArray(files)) throw new Error("MCP get_files returned an unexpected shape");
+      return { files, more: files.length === perPage };
     });
-    // strict shape check: a malformed/unparsed response must fail the run, not
-    // silently read as "empty diff" (which posts a wrong "Nothing to review")
-    const files: any[] | undefined = Array.isArray(d) ? d : d?.files;
-    if (!Array.isArray(files)) {
-      throw new Error(`MCP get_files returned an unexpected shape: ${String(d).slice(0, 120)}`);
-    }
-    return files.map((f) => ({
+    return items.map((f) => ({
       newPath: f.filename ?? "",
       oldPath: f.previous_filename ?? f.filename ?? "",
       diff: f.patch ?? "",

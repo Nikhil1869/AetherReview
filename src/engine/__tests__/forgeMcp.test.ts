@@ -69,6 +69,21 @@ describe("GitHubMcpClient", () => {
     expect(d[0]).toMatchObject({ newPath: "a.ts", newFile: true });
   });
 
+  it("getDiffs requests another page when the first page is full", async () => {
+    mh.handler = (_name, args) => ({
+      text: JSON.stringify(
+        args.page === 1
+          ? Array.from({ length: 30 }, (_, i) => ({ filename: `file-${i}.ts`, patch: "@@" }))
+          : [{ filename: "next-page.ts", patch: "@@" }],
+      ),
+      content: null,
+      isError: false,
+    });
+    const diffs = await new GitHubMcpClient().getDiffs("o/r", 1);
+    expect(diffs).toHaveLength(31);
+    expect(diffs.at(-1)?.newPath).toBe("next-page.ts");
+  });
+
   it("getDiffs accepts a legit empty files list", async () => {
     mh.handler = () => ({ text: JSON.stringify({ files: [] }), content: null, isError: false });
     expect(await new GitHubMcpClient().getDiffs("o/r", 1)).toEqual([]);

@@ -2,6 +2,8 @@
  * the OpenAI chat-completions dialect (native or via compat endpoint), so one
  * reviewer client covers all of them, including local servers. */
 
+import { parseReviewerEndpoint, reviewerConfigured, reviewerSettings } from "./config.js";
+
 export interface Provider {
   id: string;
   label: string;
@@ -76,11 +78,42 @@ export async function detectLocalModels(baseUrl: string): Promise<string[] | nul
   try {
     const res = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
       signal: AbortSignal.timeout(2000),
+      redirect: "error",
     });
     if (!res.ok) return null;
     const data = (await res.json()) as { data?: { id: string }[] | null };
     return (data.data ?? []).map((m) => m.id);
   } catch {
     return null;
+  }
+}
+
+export async function diagnoseReviewer(): Promise<{ ok: boolean; message: string }> {
+  const settings = reviewerSettings();
+  const endpoint = parseReviewerEndpoint(settings.baseUrl);
+  if (!endpoint || !reviewerConfigured())
+    return { ok: false, message: "Configure a valid reviewer endpoint and any required API key." };
+  try {
+    endpoint.pathname = `${endpoint.pathname.replace(/\/$/, "")}/models`;
+    const response = await fetch(endpoint, {
+      headers: settings.apiKey ? { Authorization: `Bearer ${settings.apiKey}` } : {},
+      signal: AbortSignal.timeout(5000),
+      redirect: "error",
+    });
+    if (!response.ok)
+      return {
+        ok: false,
+        message: `${endpoint.origin} returned HTTP ${response.status} for model discovery.`,
+      };
+    const body = (await response.json()) as { data?: { id?: unknown }[] };
+    if (!Array.isArray(body?.data))
+      return { ok: false, message: `${endpoint.origin} returned an invalid model list.` };
+    const found = body.data.some((model) => model?.id === settings.model);
+    return {
+      ok: found,
+      message: `${endpoint.origin} ${found ? "lists" : "does not list"} the configured model.`,
+    };
+  } catch {
+    return { ok: false, message: `Could not retrieve the model list from ${endpoint.origin}.` };
   }
 }

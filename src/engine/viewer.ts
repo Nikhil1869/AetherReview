@@ -1,4 +1,4 @@
-import { loadCredentials, resolveToken } from "./config.js";
+import { gitlabUrl, resolveToken } from "./config.js";
 import { getForgeClient } from "./forge.js";
 import type { Forge } from "./types.js";
 
@@ -210,8 +210,6 @@ export function mapGitlabMr(raw: any): PrSummary {
 }
 
 const githubBase = () => process.env.GITHUB_URL ?? "https://api.github.com";
-const gitlabBase = () =>
-  loadCredentials().gitlab?.url ?? process.env.GITLAB_URL ?? "https://gitlab.com";
 
 const githubHeaders = () => ({
   Authorization: `Bearer ${resolveToken("github") ?? ""}`,
@@ -239,8 +237,8 @@ export async function fetchPrList(
   const out: PrSummary[] = [];
   for (const s of states) {
     const r = await fetch(
-      `${gitlabBase()}/api/v4/projects/${encodeURIComponent(projectId)}/merge_requests?state=${s}&per_page=50&order_by=updated_at`,
-      { headers: gitlabHeaders(), signal: AbortSignal.timeout(15000) },
+      `${gitlabUrl()}/api/v4/projects/${encodeURIComponent(projectId)}/merge_requests?state=${s}&per_page=50&order_by=updated_at`,
+      { headers: gitlabHeaders(), redirect: "error", signal: AbortSignal.timeout(15000) },
     );
     if (!r.ok) throw new Error(`gitlab list mrs ${r.status}`);
     out.push(...((await r.json()) as any[]).map(mapGitlabMr));
@@ -262,8 +260,8 @@ export async function listRepos(forge: Forge): Promise<string[]> {
       return ((await r.json()) as any[]).map((x) => x.full_name);
     }
     const r = await fetch(
-      `${gitlabBase()}/api/v4/projects?membership=true&per_page=50&order_by=last_activity_at`,
-      { headers: gitlabHeaders(), signal: AbortSignal.timeout(15000) },
+      `${gitlabUrl()}/api/v4/projects?membership=true&per_page=50&order_by=last_activity_at`,
+      { headers: gitlabHeaders(), redirect: "error", signal: AbortSignal.timeout(15000) },
     );
     if (!r.ok) return [];
     return ((await r.json()) as any[]).map((x) => String(x.path_with_namespace ?? x.id));

@@ -2,7 +2,8 @@
  * commit comments. Always REST on both forges — the GitHub MCP server exposes
  * no commit-comment tools. */
 
-import { loadCredentials, resolveToken } from "./config.js";
+import { gitlabUrl, resolveToken } from "./config.js";
+import { newSideLines } from "./diff.js";
 import type { FileDiff, Forge } from "./types.js";
 
 export interface BranchInfo {
@@ -18,8 +19,6 @@ export interface CommitAnchor {
 }
 
 const githubBase = () => process.env.GITHUB_URL ?? "https://api.github.com";
-const gitlabBase = () =>
-  loadCredentials().gitlab?.url ?? process.env.GITLAB_URL ?? "https://gitlab.com";
 
 const githubHeaders = () => ({
   Authorization: `Bearer ${resolveToken("github") ?? ""}`,
@@ -38,9 +37,10 @@ async function githubFetch(path: string, init?: RequestInit): Promise<Response> 
 }
 
 async function gitlabFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${gitlabBase()}/api/v4${path}`, {
+  return fetch(`${gitlabUrl()}/api/v4${path}`, {
     ...init,
     headers: { ...gitlabHeaders(), ...(init?.headers as Record<string, string>) },
+    redirect: "error",
     signal: AbortSignal.timeout(30000),
   });
 }
@@ -130,23 +130,8 @@ export async function listCommitCommentBodies(
  * counted down from the file's first @@ header (the line below it is 1, later
  * @@ headers count too). Returns null when the line isn't visible in the patch. */
 export function diffPosition(patch: string, line: number): number | null {
-  const HUNK_RE = /^@@ -\d+(?:,\d+)? \+(\d+)(?:,\d+)? @@/;
-  let pos = 0;
-  let newLine = 0;
-  let seenHunk = false;
-  for (const l of patch.split("\n")) {
-    const hunk = l.match(HUNK_RE);
-    if (hunk) {
-      if (seenHunk) pos++;
-      seenHunk = true;
-      newLine = Number(hunk[1]);
-      continue;
-    }
-    if (!seenHunk) continue;
-    pos++;
-    if (l.startsWith("-") || l.startsWith("\\")) continue;
-    if (newLine === line) return pos;
-    newLine++;
+  for (const entry of newSideLines(patch)) {
+    if (entry.line === line) return entry.position;
   }
   return null;
 }

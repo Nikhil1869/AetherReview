@@ -185,6 +185,7 @@ describe("Invariant 6 — reviewer output is hostile input (drop invalid finding
           confidence: 0.8,
           title: "t",
           comment: "c",
+          evidence: "added",
         },
         { line: 3, severity: "warning", category: "bug", confidence: 0.5 }, // no file → dropped
         { file: "b.ts", line: 1, severity: "nope", category: "bug", confidence: 0.5 }, // bad enum → dropped
@@ -193,7 +194,18 @@ describe("Invariant 6 — reviewer output is hostile input (drop invalid finding
     });
     const { review } = await import("../reviewer.js");
     const r = await review(
-      "diff",
+      {
+        text: "### FILE: a.ts\n@@ -0,0 +5 @@\n+added",
+        files: [
+          {
+            newPath: "a.ts",
+            oldPath: "a.ts",
+            diff: "@@ -0,0 +5 @@\n+added",
+            newFile: false,
+            deletedFile: false,
+          },
+        ],
+      },
       { files: [], notes: [] },
       {
         confidenceThreshold: 0,

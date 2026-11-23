@@ -149,22 +149,20 @@ Env vars take precedence over the store. (Resolution lives in
 | Variable                                            | Effect                                                                                  |
 | --------------------------------------------------- | --------------------------------------------------------------------------------------- |
 | `AETHERREVIEW_HOME`                                 | override the store directory.                                                           |
-| `GITHUB_TOKEN` / `GITLAB_TOKEN` / `BITBUCKET_TOKEN` | forge token fallback when not in the store.                                             |
+| `GITHUB_TOKEN` / `GITLAB_TOKEN` / `BITBUCKET_TOKEN` | override the stored forge token.                                                        |
 | `GITHUB_BACKEND`                                    | `rest` forces the GitHub REST client; anything else → MCP (default).                    |
 | `GITHUB_CLIENT_ID`                                  | GitHub OAuth/App client id that enables the "Sign in with GitHub" device flow in setup. |
 | `GITHUB_URL`                                        | GitHub REST API base (default `https://api.github.com`).                                |
 | `GITLAB_URL`                                        | GitLab base URL (self-hosted).                                                          |
-| `REVIEWER_API_KEY` / `GEMINI_API_KEY`               | reviewer key (the latter is a legacy fallback).                                         |
-| `REVIEWER_BASE_URL`                                 | reviewer endpoint (any OpenAI-compatible URL).                                          |
+| `REVIEWER_API_KEY` / `GEMINI_API_KEY`               | explicit reviewer key or a legacy fallback scoped to the Gemini API origin.             |
+| `REVIEWER_BASE_URL`                                 | OpenAI-compatible endpoint over HTTPS, or HTTP on loopback.                             |
 | `REVIEWER_MODEL`                                    | reviewer model id.                                                                      |
 | `REVIEWER_BOT_NAME`                                 | display name on posted comments.                                                        |
 | `MAX_DIFF_CHARS`                                    | diff budget sent to the LLM (default 40000).                                            |
 | `MAX_CONTEXT_FILES`                                 | max context files in the bundle (default 12).                                           |
 | `MAX_CONTEXT_CHARS`                                 | max total context chars (default 40000).                                                |
-| `CT_DEBUG`                                          | log the first 800 chars of the raw model response.                                      |
 
-For local servers (Ollama, LM Studio) the reviewer works with no API key as long as the base URL
-contains `localhost`.
+Keyless local endpoints can use `localhost`, an IPv4 loopback address, or `[::1]`. Changing an endpoint's origin stops reuse of its stored reviewer key or forge token. Set the appropriate environment credential explicitly for the new host. The CLI displays the reviewer origin before sending code.
 
 ## Per-repo norms (`.aetherreview.yml`)
 

@@ -5,11 +5,11 @@
  * (chmod 600, like every other secret) and never logged. */
 
 import { createSign } from "node:crypto";
-import { chmodSync, mkdirSync, readFileSync, writeFileSync } from "node:fs";
+import { readFileSync } from "node:fs";
 import { homedir } from "node:os";
 import { join } from "node:path";
 
-import { GITHUB_APP_KEY_PATH, HOME, loadCredentials, setForge } from "./config.js";
+import { GITHUB_APP_KEY_PATH, loadCredentials, saveGithubAppKey, setForge } from "./config.js";
 
 const API = "https://api.github.com";
 // installation tokens live ~1h; re-mint this long before expiry
@@ -102,11 +102,9 @@ export async function connectGithubApp(
   installation: AppInstallation,
   slug: string,
 ): Promise<void> {
-  mkdirSync(HOME, { recursive: true });
-  writeFileSync(GITHUB_APP_KEY_PATH, privateKeyPem);
-  chmodSync(GITHUB_APP_KEY_PATH, 0o600);
   const jwt = signAppJwt(appId, privateKeyPem);
   const t = await mintInstallationToken(jwt, installation.id);
+  saveGithubAppKey(privateKeyPem);
   const cur = loadCredentials().github ?? {};
   setForge("github", {
     method: "app",

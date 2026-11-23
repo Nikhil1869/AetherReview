@@ -74,13 +74,8 @@ Manage the auto-review target list. Steps: `forge → loading → pick → manua
 
 The main screen. Responsibilities:
 
-- **Paste box** — `startPastedReview()` parses the link ([`prLink`](./engine-reference.md#prlinkts)),
-  fetches the head SHA, and calls [`runReview`](./engine-reference.md#pipelinets). Reviews show
-  as rows (running → done / failed).
-- **Auto-review** — `startWatch(targets)` drives the [`watch`](./engine-reference.md#watchts) loop
-  with an `AbortController`; `onJob` adds a "reviewing…" row. A shared `watchLog` callback feeds
-  both the events feed and the per-PR status (it pattern-matches the pipeline's
-  `pr=… found=… kept=…` / `review failed pr=…` log lines).
+- **Review** — Enter previews the selected open request. Press `p` to post a review or `v` to read posted findings. The dashboard sends these actions through the engine.
+- **Automatic posting** — `a` opens the authorization screen and lists the repository scope. Confirm with Enter. Press `a` again on the dashboard to stop the current watch session.
 - **Session selection** — on open, asks which configured repo to monitor for this session (or all,
   or a new one, or skip).
 - **Refresh** — both PR lists refetch in place (no loading wipe, selection kept):

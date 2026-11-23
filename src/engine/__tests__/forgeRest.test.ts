@@ -84,9 +84,29 @@ describe("GitLabClient (REST)", () => {
     expect(await c().postStatus("g/p", 1, "new")).toBe(3);
   });
 
-  it("postInlineNote posts a discussion and reports success", async () => {
-    route(() => ({ json: {} }));
-    expect(await c().postInlineNote("g/p", 1, "a.ts", 5, "body", refs)).toBe(true);
+  it("postInlineNote sends both paths when the file was renamed", async () => {
+    const { calls } = installFetch(() => ({ json: {} }));
+    expect(await c().postInlineNote("g/p", 1, "new.ts", 5, "body", refs, "old.ts")).toBe(true);
+    const body = new URLSearchParams(String(calls[0].init?.body));
+    expect(body.get("position[new_path]")).toBe("new.ts");
+    expect(body.get("position[old_path]")).toBe("old.ts");
+  });
+
+  it("loads later diff pages and marks truncated patches as unavailable", async () => {
+    const { calls } = installFetch((url) => {
+      const page = new URL(url).searchParams.get("page");
+      return page === "1"
+        ? {
+            json: [{ new_path: "one.ts", old_path: "one.ts", diff: "first" }],
+            headers: { "x-next-page": "2" },
+          }
+        : { json: [{ new_path: "two.ts", old_path: "two.ts", diff: "partial", too_large: true }] };
+    });
+    expect(await c().getDiffs("g/p", 1)).toMatchObject([
+      { newPath: "one.ts", diff: "first" },
+      { newPath: "two.ts", diff: "" },
+    ]);
+    expect(calls).toHaveLength(2);
   });
 
   it("submitReview is unsupported on GitLab", async () => {

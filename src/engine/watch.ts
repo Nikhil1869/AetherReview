@@ -20,6 +20,8 @@ export function parseTarget(target: string): { forge: Forge; repo: string } {
 
 export interface WatchOptions {
   intervalSec: number;
+  /** An explicit opt-in to publish on the supplied targets. */
+  publish?: boolean;
   reviewExisting?: boolean;
   /** also watch branches without an open PR (default on) */
   branches?: boolean;
@@ -30,7 +32,9 @@ export interface WatchOptions {
 }
 
 export async function watch(targets: string[], opts: WatchOptions): Promise<void> {
+  if (opts.publish !== true) return;
   const log = opts.log ?? console.log;
+  const reviewOptions = { publish: true, signal: opts.signal };
   // one malformed target in config must not kill the whole watcher
   const parsed: { forge: Forge; repo: string }[] = [];
   for (const t of targets) {
@@ -116,14 +120,14 @@ export async function watch(targets: string[], opts: WatchOptions): Promise<void
     for (const job of jobs) {
       if (opts.signal?.aborted) break;
       opts.onJob?.(job);
-      runReview(job, log).catch((e) =>
+      runReview(job, log, reviewOptions).catch((e) =>
         log(`review crashed pr=${job.prNumber}: ${describeError(e)}`),
       );
     }
     for (const job of pushJobs) {
       if (opts.signal?.aborted) break;
       opts.onPushJob?.(job);
-      runPushReview(job, log).catch((e) =>
+      runPushReview(job, log, reviewOptions).catch((e) =>
         log(`review crashed branch=${job.branch}: ${describeError(e)}`),
       );
     }

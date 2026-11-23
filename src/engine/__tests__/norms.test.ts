@@ -32,6 +32,7 @@ describe("isExcluded", () => {
   it("matches by full path and by basename", () => {
     expect(isExcluded("pkg/yarn.lock", baseNorms)).toBe(true); // basename match
     expect(isExcluded("dist/bundle.js", baseNorms)).toBe(true); // dir glob match
+    expect(isExcluded("src/nested/dist/asset/nested.js", baseNorms)).toBe(true);
     expect(isExcluded("app/vendor.min.js", baseNorms)).toBe(true);
   });
   it("does not exclude normal source files", () => {
@@ -55,6 +56,19 @@ describe("applyExcludes", () => {
 });
 
 describe("loadNorms", () => {
+  it("uses the valid fields of a repository config even when other fields have invalid types", async () => {
+    const gl = makeFakeForge({
+      files: {
+        ".aetherreview.yml":
+          "extends: 12\nexclude: [false]\nexamples: text\nconfidence_threshold: -10\nmax_findings: 5",
+      },
+    });
+    const norms = await loadNorms(gl, "owner/repo", mr);
+    expect(norms.maxFindings).toBe(5);
+    expect(norms.confidenceThreshold).toBe(0.7);
+    expect(norms.exclude).toContain("**/*.lock");
+  });
+
   it("merges repo .aetherreview.yml over defaults", async () => {
     const gl = makeFakeForge({
       files: { ".aetherreview.yml": "confidence_threshold: 0.9\nmax_findings: 5" },

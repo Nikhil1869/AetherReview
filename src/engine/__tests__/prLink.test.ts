@@ -45,6 +45,10 @@ describe("parsePrLink", () => {
       "not a link",
       "https://github.com/owner/repo",
       "https://example.com/x/y/z",
+      "https://example.com/github.com/o/r/pull/1",
+      "https://github.com/o/r/pull/12abc",
+      "o/r#0",
+      "o/r#9007199254740993",
     ]) {
       expect(parsePrLink(bad)).toBeNull();
     }

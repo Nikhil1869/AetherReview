@@ -34,10 +34,17 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("watch loop", () => {
+  it("requires explicit consent before starting the automatic publishing watcher", async () => {
+    await watch(["github:o/r"], { intervalSec: 0 });
+    expect(wh.client.listOpenPrs).not.toHaveBeenCalled();
+    expect(wh.runReview).not.toHaveBeenCalled();
+  });
+
   it("baselines existing PRs on the first cycle without reviewing", async () => {
     const ctrl = new AbortController();
     await watch(["github:o/r"], {
       intervalSec: 300,
+      publish: true,
       signal: ctrl.signal,
       log: (m) => {
         if (m.includes("baseline")) ctrl.abort();
@@ -52,6 +59,7 @@ describe("watch loop", () => {
     const jobs: any[] = [];
     await watch(["github:o/r"], {
       intervalSec: 300,
+      publish: true,
       reviewExisting: true,
       signal: ctrl.signal,
       log: () => {},
@@ -76,6 +84,7 @@ describe("watch loop", () => {
     const pushJobs: any[] = [];
     await watch(["github:o/r"], {
       intervalSec: 0,
+      publish: true,
       signal: ctrl.signal,
       log: () => {
         // second cycle: simulate a push to the same branch
@@ -110,6 +119,7 @@ describe("watch loop", () => {
     wh.branches = [{ name: "pr-branch", sha: "old" }];
     await watch(["github:o/r"], {
       intervalSec: 0,
+      publish: true,
       signal: ctrl.signal,
       log: () => {},
       onPushJob: () => {
@@ -124,6 +134,7 @@ describe("watch loop", () => {
     const logs: string[] = [];
     await watch(["bogus", "github:o/r"], {
       intervalSec: 300,
+      publish: true,
       signal: ctrl.signal,
       log: (m) => {
         logs.push(m);
@@ -142,6 +153,7 @@ describe("watch loop", () => {
     const errors: string[] = [];
     await watch(["github:o/r"], {
       intervalSec: 300,
+      publish: true,
       signal: ctrl.signal,
       log: (m) => {
         if (m.includes("poll failed")) {
