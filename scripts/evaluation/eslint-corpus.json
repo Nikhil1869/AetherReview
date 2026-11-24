@@ -1,0 +1,1205 @@
+{
+  "revision": "4a3d15a99c452c4db2fd56b577fa7597e98ab0c2",
+  "cases": [
+    {
+      "id": "1907a7aea166",
+      "split": "development",
+      "rule": "no-duplicate-case",
+      "label": "valid",
+      "code": "var a = 1; switch (a) {default: break;}",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-duplicate-case.js#L26"
+    },
+    {
+      "id": "0919df7d175f",
+      "split": "development",
+      "rule": "no-self-assign",
+      "label": "valid",
+      "code": "a |= a",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-self-assign.js#L29"
+    },
+    {
+      "id": "0291c5004fc0",
+      "split": "development",
+      "rule": "use-isnan",
+      "label": "valid",
+      "code": "foo(1 - Number.NaN)",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/use-isnan.js#L47"
+    },
+    {
+      "id": "1e8294387705",
+      "split": "development",
+      "rule": "no-sparse-arrays",
+      "label": "valid",
+      "code": "var a = [ 1, 2, ]",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-sparse-arrays.js#L21"
+    },
+    {
+      "id": "029b5c630584",
+      "split": "development",
+      "rule": "no-unreachable",
+      "label": "valid",
+      "code": "switch (foo) { case 1: break; var x; }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unreachable.js#L39"
+    },
+    {
+      "id": "1388ba5573f6",
+      "split": "development",
+      "rule": "no-async-promise-executor",
+      "label": "valid",
+      "code": "new Foo(async (resolve, reject) => {})",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-async-promise-executor.js#L24"
+    },
+    {
+      "id": "01ec8b961cbf",
+      "split": "development",
+      "rule": "no-prototype-builtins",
+      "label": "valid",
+      "code": "foo['HasOwnProperty']('bar')",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-prototype-builtins.js#L42"
+    },
+    {
+      "id": "0e9dc7d62210",
+      "split": "development",
+      "rule": "require-atomic-updates",
+      "label": "valid",
+      "code": "function* x() { let foo; foo += yield bar; }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/require-atomic-updates.js#L50"
+    },
+    {
+      "id": "0b1d4fa1313f",
+      "split": "development",
+      "rule": "no-dupe-args",
+      "label": "valid",
+      "code": "function a(a, b, c){}",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-dupe-args.js#L28"
+    },
+    {
+      "id": "2d37a3b28d75",
+      "split": "development",
+      "rule": "no-duplicate-case",
+      "label": "valid",
+      "code": "var a = 1; switch (a) {case 1: break; case true: break; default: break;}",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-duplicate-case.js#L25"
+    },
+    {
+      "id": "1edb6022bfca",
+      "split": "development",
+      "rule": "no-self-assign",
+      "label": "valid",
+      "code": "a = [a]",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-self-assign.js#L27"
+    },
+    {
+      "id": "03fbcfa6af76",
+      "split": "development",
+      "rule": "use-isnan",
+      "label": "valid",
+      "code": "var x = NaN;",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/use-isnan.js#L27"
+    },
+    {
+      "id": "03243f89d51f",
+      "split": "development",
+      "rule": "no-unreachable",
+      "label": "valid",
+      "code": "function foo() { function bar() { return 1; } return bar(); }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unreachable.js#L28"
+    },
+    {
+      "id": "276c3d37270a",
+      "split": "development",
+      "rule": "no-async-promise-executor",
+      "label": "valid",
+      "code": "function f() { new Promise(async (resolve, reject) => {}); var Promise; }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-async-promise-executor.js#L33"
+    },
+    {
+      "id": "03ba6e46407a",
+      "split": "development",
+      "rule": "no-prototype-builtins",
+      "label": "valid",
+      "code": "({}.isPrototypeOf.apply(foo, ['bar']))",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-prototype-builtins.js#L39"
+    },
+    {
+      "id": "0f25331c4f71",
+      "split": "development",
+      "rule": "require-atomic-updates",
+      "label": "valid",
+      "code": "async function f(foo) {\n                let bar = await get(foo.id);\n                bar.prop = foo.prop;\n            }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/require-atomic-updates.js#L137"
+    },
+    {
+      "id": "b15e906617f3",
+      "split": "development",
+      "rule": "no-dupe-args",
+      "label": "valid",
+      "code": "var a = function(a, b, c){}",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-dupe-args.js#L29"
+    },
+    {
+      "id": "57d6540440e7",
+      "split": "development",
+      "rule": "no-duplicate-case",
+      "label": "valid",
+      "code": "var a = 1, p = {p: {p1: 1, p2: 1}}; switch (a) {case p.p.p1: break; case p.p.p2: break; default: break;}",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-duplicate-case.js#L27"
+    },
+    {
+      "id": "21fda965b756",
+      "split": "development",
+      "rule": "no-self-assign",
+      "label": "valid",
+      "code": "a += a",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-self-assign.js#L25"
+    },
+    {
+      "id": "0856664de2f5",
+      "split": "development",
+      "rule": "use-isnan",
+      "label": "valid",
+      "code": "foo.lastIndexOf(NaN)",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/use-isnan.js#L196"
+    },
+    {
+      "id": "15b31db6cadd",
+      "split": "development",
+      "rule": "no-unreachable",
+      "label": "valid",
+      "code": "function foo() { var x = 1; var y = 2; return; }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unreachable.js#L32"
+    },
+    {
+      "id": "2d223883b065",
+      "split": "development",
+      "rule": "no-async-promise-executor",
+      "label": "valid",
+      "code": "new Promise((resolve, reject) => {}, async function unrelated() {})",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-async-promise-executor.js#L23"
+    },
+    {
+      "id": "0488fb9707a4",
+      "split": "development",
+      "rule": "no-prototype-builtins",
+      "label": "valid",
+      "code": "foo[hasOwnProperty]('bar')",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-prototype-builtins.js#L41"
+    },
+    {
+      "id": "188ac2c6e728",
+      "split": "development",
+      "rule": "require-atomic-updates",
+      "label": "valid",
+      "code": "let foo; async function x() { foo = condition ? foo : await bar; }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/require-atomic-updates.js#L55"
+    },
+    {
+      "id": "6e71a5f57c5a",
+      "split": "development",
+      "rule": "no-duplicate-case",
+      "label": "valid",
+      "code": "var a = 1; switch (a) {case 1: break; case 2: break; default: break;}",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-duplicate-case.js#L23"
+    },
+    {
+      "id": "223c4d200875",
+      "split": "development",
+      "rule": "no-self-assign",
+      "label": "valid",
+      "code": "a = b",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-self-assign.js#L24"
+    },
+    {
+      "id": "0f61c97c9157",
+      "split": "development",
+      "rule": "use-isnan",
+      "label": "valid",
+      "code": "foo(NaN + 1);",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/use-isnan.js#L32"
+    },
+    {
+      "id": "1add1ae1071c",
+      "split": "development",
+      "rule": "no-unreachable",
+      "label": "valid",
+      "code": "while (true) { switch (foo) { case 1: x = 1; x = 2;} }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unreachable.js#L33"
+    },
+    {
+      "id": "c59133b74373",
+      "split": "development",
+      "rule": "no-async-promise-executor",
+      "label": "valid",
+      "code": "function f(Promise) { new Promise(async (resolve, reject) => {}); }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-async-promise-executor.js#L34"
+    },
+    {
+      "id": "25f7073592dd",
+      "split": "development",
+      "rule": "no-prototype-builtins",
+      "label": "valid",
+      "code": "foo.hasOwnProperty.bar()",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-prototype-builtins.js#L30"
+    },
+    {
+      "id": "0ff3fe4239ab",
+      "split": "development",
+      "rule": "no-duplicate-case",
+      "label": "invalid",
+      "code": "var a = 1, p = {p: {p1: 1, p2: 1}}; switch (a) {case p .p\n/* comment */\n.p1: break; case p.p.p1: break; default: break;}",
+      "expectedLine": 3,
+      "explanation": "Duplicate case label.",
+      "source": "tests/lib/rules/no-duplicate-case.js#L150"
+    },
+    {
+      "id": "2e6c3966cb75",
+      "split": "development",
+      "rule": "no-self-assign",
+      "label": "invalid",
+      "code": "a['b'] = a['b']",
+      "expectedLine": 1,
+      "explanation": "'a['b']' is assigned to itself.",
+      "source": "tests/lib/rules/no-self-assign.js#L253"
+    },
+    {
+      "id": "0446d3c618f5",
+      "split": "development",
+      "rule": "use-isnan",
+      "label": "invalid",
+      "code": "switch(Number.NaN) { case foo: break; }",
+      "expectedLine": 1,
+      "explanation": "'switch(NaN)' can never match a case clause. Use Number.isNaN instead of the switch.",
+      "source": "tests/lib/rules/use-isnan.js#L1051"
+    },
+    {
+      "id": "9dcfd9ea8306",
+      "split": "development",
+      "rule": "no-sparse-arrays",
+      "label": "invalid",
+      "code": "var a = [,];",
+      "expectedLine": 1,
+      "explanation": "Unexpected comma in middle of array.",
+      "source": "tests/lib/rules/no-sparse-arrays.js#L25"
+    },
+    {
+      "id": "1ca738b7d751",
+      "split": "development",
+      "rule": "no-unreachable",
+      "label": "invalid",
+      "code": "while (true) { switch (foo) { case 1: break; x = 1; } }",
+      "expectedLine": 1,
+      "explanation": "Unreachable code.",
+      "source": "tests/lib/rules/no-unreachable.js#L169"
+    },
+    {
+      "id": "53a678a17712",
+      "split": "development",
+      "rule": "no-async-promise-executor",
+      "label": "invalid",
+      "code": "new Promise(((((async () => {})))))",
+      "expectedLine": 1,
+      "explanation": "Promise executor functions should not be async.",
+      "source": "tests/lib/rules/no-async-promise-executor.js#L63"
+    },
+    {
+      "id": "192fc99ccea5",
+      "split": "development",
+      "rule": "no-prototype-builtins",
+      "label": "invalid",
+      "code": "foo.propertyIsEnumerable('bar')",
+      "expectedLine": 1,
+      "explanation": "Do not access Object.prototype method 'propertyIsEnumerable' from target object.",
+      "source": "tests/lib/rules/no-prototype-builtins.js#L106"
+    },
+    {
+      "id": "0121785fd5ab",
+      "split": "development",
+      "rule": "require-atomic-updates",
+      "label": "invalid",
+      "code": "async function f(foo) {\n                    let buz = await get(foo.id);\n                    foo.bar = buz.bar;\n                }",
+      "expectedLine": 3,
+      "explanation": "Possible race condition: `foo.bar` might be assigned based on an outdated state of `foo`.",
+      "source": "tests/lib/rules/require-atomic-updates.js#L342"
+    },
+    {
+      "id": "00342ee952bf",
+      "split": "development",
+      "rule": "no-dupe-args",
+      "label": "invalid",
+      "code": "function a(a, b, b) {}",
+      "expectedLine": 1,
+      "explanation": "Duplicate param 'b'.",
+      "source": "tests/lib/rules/no-dupe-args.js#L42"
+    },
+    {
+      "id": "1659b048bc11",
+      "split": "development",
+      "rule": "no-duplicate-case",
+      "label": "invalid",
+      "code": "var a = 1; switch (a) {case 1: break; case 1: break; case 2: break; default: break;}",
+      "expectedLine": 1,
+      "explanation": "Duplicate case label.",
+      "source": "tests/lib/rules/no-duplicate-case.js#L38"
+    },
+    {
+      "id": "320758444dde",
+      "split": "development",
+      "rule": "no-self-assign",
+      "label": "invalid",
+      "code": "a = a",
+      "expectedLine": 1,
+      "explanation": "'a' is assigned to itself.",
+      "source": "tests/lib/rules/no-self-assign.js#L109"
+    },
+    {
+      "id": "0b1378e536c8",
+      "split": "development",
+      "rule": "use-isnan",
+      "label": "invalid",
+      "code": "NaN == \"abc\";",
+      "expectedLine": 1,
+      "explanation": "Use the isNaN function to compare with NaN.",
+      "source": "tests/lib/rules/use-isnan.js#L426"
+    },
+    {
+      "id": "ed341afdcd56",
+      "split": "development",
+      "rule": "no-sparse-arrays",
+      "label": "invalid",
+      "code": "var a = [ 1,, 2];",
+      "expectedLine": 1,
+      "explanation": "Unexpected comma in middle of array.",
+      "source": "tests/lib/rules/no-sparse-arrays.js#L37"
+    },
+    {
+      "id": "237949bc4454",
+      "split": "development",
+      "rule": "no-unreachable",
+      "label": "invalid",
+      "code": "function foo() { var x = 1; do { return; } while (x); x = 2; }",
+      "expectedLine": 1,
+      "explanation": "Unreachable code.",
+      "source": "tests/lib/rules/no-unreachable.js#L225"
+    },
+    {
+      "id": "68d0413b953c",
+      "split": "development",
+      "rule": "no-async-promise-executor",
+      "label": "invalid",
+      "code": "new Promise(async function foo(resolve, reject) {})",
+      "expectedLine": 1,
+      "explanation": "Promise executor functions should not be async.",
+      "source": "tests/lib/rules/no-async-promise-executor.js#L39"
+    },
+    {
+      "id": "1f56809da0e8",
+      "split": "development",
+      "rule": "no-prototype-builtins",
+      "label": "invalid",
+      "code": "foo.hasOwnProperty('bar')",
+      "expectedLine": 1,
+      "explanation": "Do not access Object.prototype method 'hasOwnProperty' from target object.",
+      "source": "tests/lib/rules/no-prototype-builtins.js#L68"
+    },
+    {
+      "id": "17c374189bbb",
+      "split": "development",
+      "rule": "require-atomic-updates",
+      "label": "invalid",
+      "code": "let foo; async function x() { foo += await amount; }",
+      "expectedLine": 1,
+      "explanation": "Possible race condition: `foo` might be reassigned based on an outdated value of `foo`.",
+      "source": "tests/lib/rules/require-atomic-updates.js#L240"
+    },
+    {
+      "id": "47132bdbc068",
+      "split": "development",
+      "rule": "no-dupe-args",
+      "label": "invalid",
+      "code": "var a = function(a, b, b) {}",
+      "expectedLine": 1,
+      "explanation": "Duplicate param 'b'.",
+      "source": "tests/lib/rules/no-dupe-args.js#L102"
+    },
+    {
+      "id": "1c6b3d76b2c4",
+      "split": "development",
+      "rule": "no-duplicate-case",
+      "label": "invalid",
+      "code": "var a = '1'; switch (a) {case '1': break; case '1': break; case '2': break; default: break;}",
+      "expectedLine": 1,
+      "explanation": "Duplicate case label.",
+      "source": "tests/lib/rules/no-duplicate-case.js#L47"
+    },
+    {
+      "id": "89bc2f5887c8",
+      "split": "development",
+      "rule": "no-self-assign",
+      "label": "invalid",
+      "code": "a.b = a.b",
+      "expectedLine": 1,
+      "explanation": "'a.b' is assigned to itself.",
+      "source": "tests/lib/rules/no-self-assign.js#L241"
+    },
+    {
+      "id": "0fdf06bbff74",
+      "split": "development",
+      "rule": "use-isnan",
+      "label": "invalid",
+      "code": "x === (doStuff(), NaN);",
+      "expectedLine": 1,
+      "explanation": "Use the isNaN function to compare with NaN.",
+      "source": "tests/lib/rules/use-isnan.js#L854"
+    },
+    {
+      "id": "24501c58da5f",
+      "split": "development",
+      "rule": "no-unreachable",
+      "label": "invalid",
+      "code": "function foo() { var x = 1; try { return; } finally {} x = 2; }",
+      "expectedLine": 1,
+      "explanation": "Unreachable code.",
+      "source": "tests/lib/rules/no-unreachable.js#L209"
+    },
+    {
+      "id": "9f11fc1db09c",
+      "split": "development",
+      "rule": "no-async-promise-executor",
+      "label": "invalid",
+      "code": "new Promise(async (resolve, reject) => {})",
+      "expectedLine": 1,
+      "explanation": "Promise executor functions should not be async.",
+      "source": "tests/lib/rules/no-async-promise-executor.js#L51"
+    },
+    {
+      "id": "248b8197358a",
+      "split": "development",
+      "rule": "no-prototype-builtins",
+      "label": "invalid",
+      "code": "foo.bar.baz.isPrototypeOf('bar')",
+      "expectedLine": 1,
+      "explanation": "Do not access Object.prototype method 'isPrototypeOf' from target object.",
+      "source": "tests/lib/rules/no-prototype-builtins.js#L144"
+    },
+    {
+      "id": "1e56bd2fedb8",
+      "split": "development",
+      "rule": "require-atomic-updates",
+      "label": "invalid",
+      "code": "function* g(foo) {\n                    baz = foo.bar;\n                    yield something;\n                    foo.bar = 1;\n                }",
+      "expectedLine": 4,
+      "explanation": "Possible race condition: `foo.bar` might be assigned based on an outdated state of `foo`.",
+      "source": "tests/lib/rules/require-atomic-updates.js#L394"
+    },
+    {
+      "id": "474be5e6f150",
+      "split": "development",
+      "rule": "no-dupe-args",
+      "label": "invalid",
+      "code": "var a = function(a, a, a) {}",
+      "expectedLine": 1,
+      "explanation": "Duplicate param 'a'.",
+      "source": "tests/lib/rules/no-dupe-args.js#L115"
+    },
+    {
+      "id": "427a7aff8a06",
+      "split": "development",
+      "rule": "no-duplicate-case",
+      "label": "invalid",
+      "code": "var a = 1, f = function(s) { return { p1: s } }; switch (a) {case f(\na + 1 // comment\n).p1: break; case f(a+1)\n.p1: break; default: break;}",
+      "expectedLine": 3,
+      "explanation": "Duplicate case label.",
+      "source": "tests/lib/rules/no-duplicate-case.js#L194"
+    },
+    {
+      "id": "cddb7735fbb1",
+      "split": "development",
+      "rule": "no-self-assign",
+      "label": "invalid",
+      "code": "a[b] = a[b]",
+      "expectedLine": 1,
+      "explanation": "'a[b]' is assigned to itself.",
+      "source": "tests/lib/rules/no-self-assign.js#L249"
+    },
+    {
+      "id": "0feeff6c3318",
+      "split": "development",
+      "rule": "use-isnan",
+      "label": "invalid",
+      "code": "Number.NaN > \"abc\";",
+      "expectedLine": 1,
+      "explanation": "Use the isNaN function to compare with NaN.",
+      "source": "tests/lib/rules/use-isnan.js#L726"
+    },
+    {
+      "id": "2c9abb35dd92",
+      "split": "development",
+      "rule": "no-unreachable",
+      "label": "invalid",
+      "code": "function foo() { var x = 1; while (x) { if (x) break; else continue; x = 2; } }",
+      "expectedLine": 1,
+      "explanation": "Unreachable code.",
+      "source": "tests/lib/rules/no-unreachable.js#L233"
+    },
+    {
+      "id": "027866713f75",
+      "split": "heldOut",
+      "rule": "no-fallthrough",
+      "label": "valid",
+      "code": "switch (foo) {\n    case 0:\n        a();\n}\nswitch (bar) {\n    case 1:\n        b();\n}",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-fallthrough.js#L145"
+    },
+    {
+      "id": "1bb764deb831",
+      "split": "heldOut",
+      "rule": "no-unsafe-finally",
+      "label": "valid",
+      "code": "var foo = function() {\n try { \n return 1; \n } catch(err) { \n return 2; \n } finally { \n console.log('hola!') \n } \n }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unsafe-finally.js#L23"
+    },
+    {
+      "id": "70bec02c40f2",
+      "split": "heldOut",
+      "rule": "no-dupe-keys",
+      "label": "valid",
+      "code": "var x = { 012: 1, 12: 2 };",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-dupe-keys.js#L66"
+    },
+    {
+      "id": "0ecdd5f44eb5",
+      "split": "heldOut",
+      "rule": "no-constant-binary-expression",
+      "label": "valid",
+      "code": "[n] == true",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-constant-binary-expression.js#L50"
+    },
+    {
+      "id": "1b082766b246",
+      "split": "heldOut",
+      "rule": "valid-typeof",
+      "label": "valid",
+      "code": "'number' === typeof foo",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/valid-typeof.js#L34"
+    },
+    {
+      "id": "041999417943",
+      "split": "heldOut",
+      "rule": "no-await-in-loop",
+      "label": "valid",
+      "code": "while (true) { const value = 0; }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-await-in-loop.js#L57"
+    },
+    {
+      "id": "0707011095ff",
+      "split": "heldOut",
+      "rule": "no-unreachable-loop",
+      "label": "valid",
+      "code": "while (bar) { foo(); if (true) { break; } }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unreachable-loop.js#L189"
+    },
+    {
+      "id": "00247b7a6199",
+      "split": "heldOut",
+      "rule": "no-unsafe-optional-chaining",
+      "label": "valid",
+      "code": "var bar = {...foo?.bar};",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unsafe-optional-chaining.js#L48"
+    },
+    {
+      "id": "0ac88b4c9a8d",
+      "split": "heldOut",
+      "rule": "no-loss-of-precision",
+      "label": "valid",
+      "code": "var x = ['a', 'b']",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-loss-of-precision.js#L138"
+    },
+    {
+      "id": "08ae5d7e6c6b",
+      "split": "heldOut",
+      "rule": "no-fallthrough",
+      "label": "valid",
+      "code": "switch(foo) { case 0: a()\n /* falls through */ case 1: b(); }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-fallthrough.js#L30"
+    },
+    {
+      "id": "45d8a50bdbb2",
+      "split": "heldOut",
+      "rule": "no-unsafe-finally",
+      "label": "valid",
+      "code": "var foo = function() { try { return 1 } catch(err) { return 2 } finally { var a = function(x) { if(!x) { throw new Error() } } } }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unsafe-finally.js#L26"
+    },
+    {
+      "id": "99e10bef4f57",
+      "split": "heldOut",
+      "rule": "no-dupe-keys",
+      "label": "valid",
+      "code": "var x = { '': 1, bar: 2 };",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-dupe-keys.js#L30"
+    },
+    {
+      "id": "265dbeb3cdc3",
+      "split": "heldOut",
+      "rule": "no-constant-binary-expression",
+      "label": "valid",
+      "code": "function Boolean(n) { return Math.random(); }; Boolean(1) == true",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-constant-binary-expression.js#L59"
+    },
+    {
+      "id": "1f9f1a71e368",
+      "split": "heldOut",
+      "rule": "valid-typeof",
+      "label": "valid",
+      "code": "typeof foo === 'undefined'",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/valid-typeof.js#L25"
+    },
+    {
+      "id": "0d5df680c280",
+      "split": "heldOut",
+      "rule": "no-await-in-loop",
+      "label": "valid",
+      "code": "async function foo() { while (true) { class Foo { async foo() { await bar; } } } }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-await-in-loop.js#L51"
+    },
+    {
+      "id": "42327efb41a3",
+      "split": "heldOut",
+      "rule": "no-unreachable-loop",
+      "label": "valid",
+      "code": "while(true); while(true);",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unreachable-loop.js#L198"
+    },
+    {
+      "id": "01b303a3fbb6",
+      "split": "heldOut",
+      "rule": "no-unsafe-optional-chaining",
+      "label": "valid",
+      "code": "bar += obj?.foo;",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unsafe-optional-chaining.js#L89"
+    },
+    {
+      "id": "0eabfc7be7bb",
+      "split": "heldOut",
+      "rule": "no-loss-of-precision",
+      "label": "valid",
+      "code": "var x = 12300000000000000000000000",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-loss-of-precision.js#L41"
+    },
+    {
+      "id": "128eac1e51a9",
+      "split": "heldOut",
+      "rule": "no-fallthrough",
+      "label": "valid",
+      "code": "switch(foo) { case 0: a(); break; case 1: b(); }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-fallthrough.js#L45"
+    },
+    {
+      "id": "540258228d12",
+      "split": "heldOut",
+      "rule": "no-unsafe-finally",
+      "label": "valid",
+      "code": "var foo = function() { try {} finally { while (true) continue; } }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unsafe-finally.js#L30"
+    },
+    {
+      "id": "9f293a135e2d",
+      "split": "heldOut",
+      "rule": "no-dupe-keys",
+      "label": "valid",
+      "code": "var foo = { __proto__: 1, two: 2};",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-dupe-keys.js#L28"
+    },
+    {
+      "id": "2a9e1df8f859",
+      "split": "heldOut",
+      "rule": "no-constant-binary-expression",
+      "label": "valid",
+      "code": "foo == true",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-constant-binary-expression.js#L44"
+    },
+    {
+      "id": "234671bdd326",
+      "split": "heldOut",
+      "rule": "valid-typeof",
+      "label": "valid",
+      "code": "'boolean' === typeof foo",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/valid-typeof.js#L33"
+    },
+    {
+      "id": "3e1a5ccca5df",
+      "split": "heldOut",
+      "rule": "no-await-in-loop",
+      "label": "valid",
+      "code": "async function foo() { for (var bar = await baz in qux) {} }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-await-in-loop.js#L33"
+    },
+    {
+      "id": "44e1e666936e",
+      "split": "heldOut",
+      "rule": "no-unreachable-loop",
+      "label": "valid",
+      "code": "for (x of [1]);",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unreachable-loop.js#L193"
+    },
+    {
+      "id": "02894b516a74",
+      "split": "heldOut",
+      "rule": "no-unsafe-optional-chaining",
+      "label": "valid",
+      "code": "!!obj?.foo",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unsafe-optional-chaining.js#L26"
+    },
+    {
+      "id": "149f1f67e2fb",
+      "split": "heldOut",
+      "rule": "no-loss-of-precision",
+      "label": "valid",
+      "code": "var x = undefined",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-loss-of-precision.js#L136"
+    },
+    {
+      "id": "12aa3fd6c505",
+      "split": "heldOut",
+      "rule": "no-fallthrough",
+      "label": "valid",
+      "code": "switch(foo) { case 0: // comment\n case 1: break; }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-fallthrough.js#L53"
+    },
+    {
+      "id": "58c0c42094ac",
+      "split": "heldOut",
+      "rule": "no-unsafe-finally",
+      "label": "valid",
+      "code": "var foo = function() { try {} finally { while (true) break; } }",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-unsafe-finally.js#L29"
+    },
+    {
+      "id": "b716852a477d",
+      "split": "heldOut",
+      "rule": "no-dupe-keys",
+      "label": "valid",
+      "code": "+{ get a() { }, set a(b) { } };",
+      "expectedLine": null,
+      "explanation": null,
+      "source": "tests/lib/rules/no-dupe-keys.js#L44"
+    },
+    {
+      "id": "42c5351752a5",
+      "split": "heldOut",
+      "rule": "no-fallthrough",
+      "label": "invalid",
+      "code": "switch(foo) { case 0: a(); default: b() }",
+      "expectedLine": 1,
+      "explanation": "Expected a 'break' statement before 'default'.",
+      "source": "tests/lib/rules/no-fallthrough.js#L284"
+    },
+    {
+      "id": "0279d5cb1e20",
+      "split": "heldOut",
+      "rule": "no-unsafe-finally",
+      "label": "invalid",
+      "code": "var foo = function() { \n try { \n return 1; \n } catch(err) { \n return 2; \n } finally { \n return 3; \n } \n }",
+      "expectedLine": 7,
+      "explanation": "Unsafe usage of ReturnStatement.",
+      "source": "tests/lib/rules/no-unsafe-finally.js#L48"
+    },
+    {
+      "id": "039c042368c9",
+      "split": "heldOut",
+      "rule": "no-dupe-keys",
+      "label": "invalid",
+      "code": "var x = { \"z\": 1, z: 2 };",
+      "expectedLine": 1,
+      "explanation": "Duplicate key 'z'.",
+      "source": "tests/lib/rules/no-dupe-keys.js#L218"
+    },
+    {
+      "id": "0020988d436b",
+      "split": "heldOut",
+      "rule": "no-constant-binary-expression",
+      "label": "invalid",
+      "code": "(a += 1) ?? foo",
+      "expectedLine": 1,
+      "explanation": "Unexpected constant nullishness on the left-hand side of a `??` expression.",
+      "source": "tests/lib/rules/no-constant-binary-expression.js#L575"
+    },
+    {
+      "id": "1fd4c06cfd09",
+      "split": "heldOut",
+      "rule": "valid-typeof",
+      "label": "invalid",
+      "code": "if (typeof bar !== 'umdefined') {}",
+      "expectedLine": 1,
+      "explanation": "Invalid typeof comparison value.",
+      "source": "tests/lib/rules/valid-typeof.js#L122"
+    },
+    {
+      "id": "1a4224f1321b",
+      "split": "heldOut",
+      "rule": "no-await-in-loop",
+      "label": "invalid",
+      "code": "async function foo() { for (var i; await foo(i); i++) {  } }",
+      "expectedLine": 1,
+      "explanation": "Unexpected `await` inside a loop.",
+      "source": "tests/lib/rules/no-await-in-loop.js#L126"
+    },
+    {
+      "id": "102c602b6ee7",
+      "split": "heldOut",
+      "rule": "no-unreachable-loop",
+      "label": "invalid",
+      "code": "do { for (var i = 1; i < 10; i++) continue; break; } while(foo)",
+      "expectedLine": 1,
+      "explanation": "Invalid loop. Its body allows only one iteration.",
+      "source": "tests/lib/rules/no-unreachable-loop.js#L324"
+    },
+    {
+      "id": "10bc5d9cde8a",
+      "split": "heldOut",
+      "rule": "no-loss-of-precision",
+      "label": "invalid",
+      "code": "const x = 9_007_199_254_740.993e3;",
+      "expectedLine": 1,
+      "explanation": "This number literal will lose precision at runtime.",
+      "source": "tests/lib/rules/no-loss-of-precision.js#L371"
+    },
+    {
+      "id": "4bf5727f142e",
+      "split": "heldOut",
+      "rule": "no-fallthrough",
+      "label": "invalid",
+      "code": "switch(foo) { case 0: do { break; } while (a); default: b() }",
+      "expectedLine": 1,
+      "explanation": "Expected a 'break' statement before 'default'.",
+      "source": "tests/lib/rules/no-fallthrough.js#L300"
+    },
+    {
+      "id": "1285ef347616",
+      "split": "heldOut",
+      "rule": "no-unsafe-finally",
+      "label": "invalid",
+      "code": "var foo = function() { a: while (true) try {} finally { switch (true) { case true: break a; } } }",
+      "expectedLine": 1,
+      "explanation": "Unsafe usage of BreakStatement.",
+      "source": "tests/lib/rules/no-unsafe-finally.js#L186"
+    },
+    {
+      "id": "33301f0e2000",
+      "split": "heldOut",
+      "rule": "no-dupe-keys",
+      "label": "invalid",
+      "code": "var x = { 012: 1, 10: 2 };",
+      "expectedLine": 1,
+      "explanation": "Duplicate key '10'.",
+      "source": "tests/lib/rules/no-dupe-keys.js#L169"
+    },
+    {
+      "id": "0056c8c5930c",
+      "split": "heldOut",
+      "rule": "no-constant-binary-expression",
+      "label": "invalid",
+      "code": "typeof foo == true",
+      "expectedLine": 1,
+      "explanation": "Unexpected constant binary expression. Compares constantly with the right-hand side of the `==`.",
+      "source": "tests/lib/rules/no-constant-binary-expression.js#L957"
+    },
+    {
+      "id": "2ba7b6c301a8",
+      "split": "heldOut",
+      "rule": "valid-typeof",
+      "label": "invalid",
+      "code": "if (typeof bar !== undefined) {}",
+      "expectedLine": 1,
+      "explanation": "Invalid typeof comparison value.",
+      "source": "tests/lib/rules/valid-typeof.js#L196"
+    },
+    {
+      "id": "32cde94ab205",
+      "split": "heldOut",
+      "rule": "no-await-in-loop",
+      "label": "invalid",
+      "code": "async function foo() { for await (var x of xs) { while (1) await f(x) } }",
+      "expectedLine": 1,
+      "explanation": "Unexpected `await` inside a loop.",
+      "source": "tests/lib/rules/no-await-in-loop.js#L158"
+    },
+    {
+      "id": "33697144cbac",
+      "split": "heldOut",
+      "rule": "no-unreachable-loop",
+      "label": "invalid",
+      "code": "lbl: for (var i = 0; i < 10; i++) { while (foo) break lbl; } /* outer is valid because inner can have 0 iterations */",
+      "expectedLine": 1,
+      "explanation": "Invalid loop. Its body allows only one iteration.",
+      "source": "tests/lib/rules/no-unreachable-loop.js#L241"
+    },
+    {
+      "id": "1ea7a890ff3d",
+      "split": "heldOut",
+      "rule": "no-loss-of-precision",
+      "label": "invalid",
+      "code": "var x = 9007199254740993",
+      "expectedLine": 1,
+      "explanation": "This number literal will lose precision at runtime.",
+      "source": "tests/lib/rules/no-loss-of-precision.js#L153"
+    },
+    {
+      "id": "5b32f38e1f31",
+      "split": "heldOut",
+      "rule": "no-fallthrough",
+      "label": "invalid",
+      "code": "switch(foo) { case 0: a(); { /* falls through */ } default: b() }",
+      "expectedLine": 1,
+      "explanation": "Expected a 'break' statement before 'default'.",
+      "source": "tests/lib/rules/no-fallthrough.js#L312"
+    },
+    {
+      "id": "26f266e38ad1",
+      "split": "heldOut",
+      "rule": "no-unsafe-finally",
+      "label": "invalid",
+      "code": "var foo = function() { while (true) try {} finally { continue; } }",
+      "expectedLine": 1,
+      "explanation": "Unsafe usage of ContinueStatement.",
+      "source": "tests/lib/rules/no-unsafe-finally.js#L164"
+    },
+    {
+      "id": "374e43adaca3",
+      "split": "heldOut",
+      "rule": "no-dupe-keys",
+      "label": "invalid",
+      "code": "var x = { y: 1, y: 2 };",
+      "expectedLine": 1,
+      "explanation": "Duplicate key 'y'.",
+      "source": "tests/lib/rules/no-dupe-keys.js#L132"
+    },
+    {
+      "id": "02cd3c5fd9d8",
+      "split": "heldOut",
+      "rule": "no-constant-binary-expression",
+      "label": "invalid",
+      "code": "({}) === true",
+      "expectedLine": 1,
+      "explanation": "Unexpected constant binary expression. Compares constantly with the right-hand side of the `===`.",
+      "source": "tests/lib/rules/no-constant-binary-expression.js#L1076"
+    },
+    {
+      "id": "2cec1c979344",
+      "split": "heldOut",
+      "rule": "valid-typeof",
+      "label": "invalid",
+      "code": "'strnig' != typeof foo",
+      "expectedLine": 1,
+      "explanation": "Invalid typeof comparison value.",
+      "source": "tests/lib/rules/valid-typeof.js#L138"
+    },
+    {
+      "id": "3655f16f80eb",
+      "split": "heldOut",
+      "rule": "no-await-in-loop",
+      "label": "invalid",
+      "code": "async function foo() { for (var i; i < n; i = await bar) {  } }",
+      "expectedLine": 1,
+      "explanation": "Unexpected `await` inside a loop.",
+      "source": "tests/lib/rules/no-await-in-loop.js#L130"
+    },
+    {
+      "id": "4d62ccfbf719",
+      "split": "heldOut",
+      "rule": "no-unreachable-loop",
+      "label": "invalid",
+      "code": "for (a of b) { for(;;) { if (foo) { throw err; } } }",
+      "expectedLine": 1,
+      "explanation": "Invalid loop. Its body allows only one iteration.",
+      "source": "tests/lib/rules/no-unreachable-loop.js#L298"
+    },
+    {
+      "id": "22a096db31c6",
+      "split": "heldOut",
+      "rule": "no-loss-of-precision",
+      "label": "invalid",
+      "code": "var x = 900719.9254740994",
+      "expectedLine": 1,
+      "explanation": "This number literal will lose precision at runtime.",
+      "source": "tests/lib/rules/no-loss-of-precision.js#L169"
+    },
+    {
+      "id": "5ca7153632a5",
+      "split": "heldOut",
+      "rule": "no-fallthrough",
+      "label": "invalid",
+      "code": "switch(foo) { case 0: try { throw 0; } catch (err) {} default: b() }",
+      "expectedLine": 1,
+      "explanation": "Expected a 'break' statement before 'default'.",
+      "source": "tests/lib/rules/no-fallthrough.js#L292"
+    },
+    {
+      "id": "2b359ed6c539",
+      "split": "heldOut",
+      "rule": "no-unsafe-finally",
+      "label": "invalid",
+      "code": "var foo = function() { a: switch (true) { case true: try {} finally { switch (true) { case true: break a; } } } }",
+      "expectedLine": 1,
+      "explanation": "Unsafe usage of BreakStatement.",
+      "source": "tests/lib/rules/no-unsafe-finally.js#L208"
+    },
+    {
+      "id": "8ae870e9e389",
+      "split": "heldOut",
+      "rule": "no-dupe-keys",
+      "label": "invalid",
+      "code": "var foo = {\n  bar: 1,\n  bar: 1,\n}",
+      "expectedLine": 3,
+      "explanation": "Duplicate key 'bar'.",
+      "source": "tests/lib/rules/no-dupe-keys.js#L227"
+    },
+    {
+      "id": "030a2b72865b",
+      "split": "heldOut",
+      "rule": "no-constant-binary-expression",
+      "label": "invalid",
+      "code": "~bar ?? foo",
+      "expectedLine": 1,
+      "explanation": "Unexpected constant nullishness on the left-hand side of a `??` expression.",
+      "source": "tests/lib/rules/no-constant-binary-expression.js#L728"
+    },
+    {
+      "id": "4063dcfbeacc",
+      "split": "heldOut",
+      "rule": "valid-typeof",
+      "label": "invalid",
+      "code": "if (typeof bar === 'umdefined') {}",
+      "expectedLine": 1,
+      "explanation": "Invalid typeof comparison value.",
+      "source": "tests/lib/rules/valid-typeof.js#L98"
+    },
+    {
+      "id": "550f9f56267c",
+      "split": "heldOut",
+      "rule": "no-await-in-loop",
+      "label": "invalid",
+      "code": "async function foo() { while (await foo()) {  } }",
+      "expectedLine": 1,
+      "explanation": "Unexpected `await` inside a loop.",
+      "source": "tests/lib/rules/no-await-in-loop.js#L96"
+    }
+  ]
+}
