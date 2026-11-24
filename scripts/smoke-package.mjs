@@ -88,7 +88,12 @@ try {
     REVIEWER_MODEL: "fixture",
   };
   const npmRun = (cwd, ...args) =>
-    run(process.execPath, [npm, ...args], { cwd, env, timeout: 120_000 });
+    // A fresh global-style install can spend several minutes extracting dependencies on Windows.
+    run(process.execPath, [npm, ...args], {
+      cwd,
+      env,
+      timeout: args[0] === "install" ? 300_000 : 120_000,
+    });
   const git = (...args) => run("git", args, { cwd: repo, env, timeout: 60_000 });
   const expectedVersion = JSON.parse(await readFile(join(project, "package.json"), "utf8")).version;
   const packed = await npmRun(project, "pack", "--json", "--pack-destination", temp);

@@ -13,4 +13,4 @@ Use GitHub's private vulnerability reporting for the repository if it is availab
 - The reviewer treats repository content as input data. Findings require source evidence at the reported added line. Provider error text is kept out of review logs. Source anchoring cannot establish that a model's behavioral interpretation is correct.
 - Remote posting requires explicit authorization. Verify the account and repository scope before enabling automatic publishing. Local previews and exported reports may contain snippets of proprietary source.
 
-The [production audit](docs/production-audit.md) tracks unresolved security and release work, including native pending-review ownership, live adapter verification, and stronger secret detection.
+The [P0 verification report](docs/p0-verification.md) records the tested ownership and publication guards, sensitive-source handling and remaining live acceptance requirements.

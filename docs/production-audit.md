@@ -1,5 +1,7 @@
 # Production readiness audit
 
+The [November 24 P0 verification report](p0-verification.md) updates the release decision, forge acceptance, model-quality measurements and cross-platform CI evidence. The sections below preserve the original November 23 assessment.
+
 Assessment date 2026-11-23. The baseline was the supplied AetherReview source archive. It contained version 2.1.0 and no Git metadata. The public repository identifies `master` as its default branch. [AetherReview repository](https://github.com/Nikhil1869/AetherReview)
 
 ## A. Completed implementation
