@@ -1,5 +1,6 @@
 import { afterEach, describe, expect, it } from "vitest";
 
+import { GitHubMcpClient } from "../forgeMcp.js";
 import { findingMarker, getForgeClient, REVIEW_MARKER, STATUS_MARKER } from "../forge.js";
 
 afterEach(() => {
@@ -27,7 +28,7 @@ describe("getForgeClient factory", () => {
   it("defaults authenticated GitHub sessions to the MCP client", async () => {
     process.env.GITHUB_TOKEN = "fixture";
     const c = await getForgeClient("github");
-    expect(c.constructor.name).toBe("GitHubMcpClient");
+    expect(c).toBeInstanceOf(GitHubMcpClient);
     await c.close();
   });
   it("keeps alternate forge credentials at their selected origin", async () => {
