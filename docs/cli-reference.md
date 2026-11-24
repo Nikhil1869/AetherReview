@@ -10,6 +10,20 @@
 
 Use `reset --yes` to confirm a reset from a noninteractive shell. Custom norm files live in a separate subdirectory of the app store and are retained.
 
+## Free local review with Ollama
+
+With Ollama installed and running, download the local model once. In PowerShell, select the loopback endpoint for this session and run the diagnostic before reviewing staged changes.
+
+```powershell
+ollama pull qwen2.5-coder:3b
+$env:REVIEWER_BASE_URL = 'http://localhost:11434/v1'
+$env:REVIEWER_MODEL = 'qwen2.5-coder:3b'
+aetherreview doctor
+aetherreview review --staged
+```
+
+The model download requires internet access. Inference for this local tag runs on your machine without a provider API key. To disable Ollama cloud features, set `OLLAMA_NO_CLOUD=1` in the environment that starts the Ollama server. The AetherReview benchmark accepts only loopback endpoints. A review whose proposed findings all fail validation returns exit code 1. [Ollama FAQ](https://docs.ollama.com/faq) · [Measured results](p0-verification.md)
+
 ## Review targets
 
 ```bash
