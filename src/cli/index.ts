@@ -15,7 +15,7 @@ import {
 import { runReview, type ReviewTarget } from "../engine/pipeline.js";
 import { parsePrLink, validProjectId } from "../engine/prLink.js";
 import { diagnoseReviewer } from "../engine/providers.js";
-import { meetsGate, renderMarkdown, renderSarif } from "../engine/report.js";
+import { meetsGate, renderMarkdown, renderSarif, renderRdjson } from "../engine/report.js";
 import type { Severity } from "../engine/types.js";
 
 interface ReviewCliOptions {
@@ -24,7 +24,8 @@ interface ReviewCliOptions {
   pr?: string;
   publish?: boolean;
   json?: boolean;
-  format?: "terminal" | "json" | "markdown" | "sarif";
+  format?: "terminal" | "json" | "markdown" | "sarif" | "rdjson";
+  analysis?: "ai" | "static" | "hybrid";
   failOn?: Severity;
   verbose?: boolean;
   quiet?: boolean;
@@ -51,6 +52,12 @@ program
   .option("--head <revision>", "select the comparison head when using --base")
   .option("--include-untracked", "include non-ignored untracked files in a working-tree review")
   .option("--publish", "authorize posting this review to the forge")
+  .addOption(
+    new Option(
+      "--analysis <mode>",
+      "analysis engine (defaults to static when no reviewer is configured)",
+    ).choices(["static", "ai", "hybrid"]),
+  )
   .option("--json", "write the review outcome as JSON")
   .addOption(
     new Option("--format <format>", "report format").choices([
@@ -58,6 +65,7 @@ program
       "json",
       "markdown",
       "sarif",
+      "rdjson",
     ]),
   )
   .addOption(
@@ -135,13 +143,16 @@ program
     }
 
     const settings = reviewerSettings();
+    const analysis = opts.analysis ?? (reviewerConfigured() ? "ai" : "static");
     const endpoint = parseReviewerEndpoint(settings.baseUrl);
-    if (endpoint) console.error(`Reviewer endpoint for repository content: ${endpoint.origin}`);
+    if (analysis !== "static" && endpoint)
+      console.error(`Reviewer endpoint for repository content: ${endpoint.origin}`);
     const controller = new AbortController();
     const cancel = () => controller.abort();
     process.once("SIGINT", cancel);
     const outcome = await runReview(target, opts.verbose ? console.error : () => {}, {
       publish: opts.publish,
+      analysis,
       signal: controller.signal,
     }).finally(() => process.off("SIGINT", cancel));
     if (controller.signal.aborted) process.exitCode = 130;
@@ -154,6 +165,7 @@ program
       process.exitCode = 2;
     if (format === "json") console.log(JSON.stringify({ schemaVersion: 1, ...outcome }));
     else if (format === "sarif") console.log(JSON.stringify(renderSarif(outcome), null, 2));
+    else if (format === "rdjson") console.log(JSON.stringify(renderRdjson(outcome)));
     else if (format === "markdown") console.log(renderMarkdown(outcome));
     else if (outcome.status !== "completed")
       console.error(stripVTControlCharacters(outcome.message));

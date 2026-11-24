@@ -11,15 +11,65 @@ import { finalize, finalizeCommit } from "./poster.js";
 import { withPublicationAudit } from "./publicationAudit.js";
 import { review } from "./reviewer.js";
 import * as state from "./state.js";
-import type { FileDiff, Job, MrInfo, Norms, PushJob, ReviewResult } from "./types.js";
+import type { Finding, FileDiff, Job, MrInfo, Norms, PushJob, ReviewResult } from "./types.js";
 
 class PublicationStopped extends Error {}
 
 export type Logger = (msg: string) => void;
 
 export interface ReviewOptions {
+  analysis?: "static" | "ai" | "hybrid";
   publish?: boolean;
   signal?: AbortSignal;
+}
+
+async function analyzeChange(
+  source: Pick<ForgeClient, "getFile" | "searchBlobs">,
+  project: string,
+  revision: string,
+  diff: ReturnType<typeof reviewDiff>,
+  norms: Norms,
+  log: Logger,
+  options: ReviewOptions,
+  omitted: number,
+) {
+  const mode = options.analysis ?? "ai";
+  const mechanical =
+    mode === "ai"
+      ? undefined
+      : await (
+          await import("./staticReview.js")
+        ).analyzeStatic(
+          diff.files,
+          (p) => source.getFile(project, p, revision),
+          revision,
+          options.signal,
+        );
+  if (mode === "static" && !mechanical?.analyzed)
+    throw Error("Static review inconclusive. No supported source files could be verified.");
+  let semantic: Finding[] = [];
+  if (mode !== "static") {
+    const context = await buildContext(source, project, revision, diff.files, norms, log);
+    const reviewResult = await review(diff, context, norms, log, options.signal);
+    semantic = reviewResult.findings.map((f) => ({
+      ...f,
+      tool: "model",
+      verification: "source-anchored",
+      revision,
+    }));
+  }
+  const diagnostics = (mechanical?.findings ?? []).filter(
+    (f) => norms.categories[f.category] !== false,
+  );
+  const kept = acceptedFindings({ findings: [...diagnostics, ...semantic], summary: "" }, norms);
+  const outcome = completedReview(
+    revision,
+    kept,
+    omitted + (mode === "static" && mechanical ? mechanical.total - mechanical.analyzed : 0),
+  );
+  if (mechanical)
+    outcome.result.summary = `${kept.length} finding(s). Static rules analyzed ${mechanical.analyzed} of ${mechanical.total} selected files.`;
+  return outcome;
 }
 
 export type ReviewOutcome =
@@ -75,11 +125,14 @@ async function reviewWorkingTree(
           ? "No text patches available within the review budget."
           : "All changed files excluded by norms.",
       };
-    const context = await buildContext(source, source.root, source.headSha, diff.files, norms, log);
-    const result = await review(diff, context, norms, log, options.signal);
-    return completedReview(
+    return await analyzeChange(
+      source,
+      source.root,
       source.headSha,
-      acceptedFindings(result, norms),
+      diff,
+      norms,
+      log,
+      options,
       files.length - diff.files.length,
     );
   } catch (error) {
@@ -111,6 +164,11 @@ export async function runReview(
   options: ReviewOptions = {},
 ): Promise<ReviewOutcome> {
   if ("local" in job) return reviewWorkingTree(job, log, options);
+  if (options.publish && options.analysis && options.analysis !== "ai")
+    return {
+      status: "failed",
+      message: "Static and hybrid diagnostics are available for preview only.",
+    };
   const { projectId, prNumber, headSha } = job;
   const skip = (message: string): ReviewOutcome => {
     log(`pr=${prNumber} ${message}`);
@@ -163,9 +221,17 @@ export async function runReview(
         `${omittedFiles} changed file(s) unavailable or over budget. Run a preview for partial results.`,
       );
     }
-    const context = await buildContext(gl, sourceProject, headRef, diff.files, norms, log);
-    const result = await review(diff, context, norms, log, options.signal);
-    const kept = acceptedFindings(result, norms);
+    const outcome = await analyzeChange(
+      gl,
+      sourceProject,
+      headRef,
+      diff,
+      norms,
+      log,
+      options,
+      omittedFiles,
+    );
+    const kept = outcome.result.findings;
     const client = gl;
     const ensureCurrent = async () => {
       const current = await client.getMr(projectId, prNumber);
@@ -182,7 +248,6 @@ export async function runReview(
       }
     };
     await ensureCurrent();
-    const outcome = completedReview(headRef, kept, omittedFiles);
     if (options.publish === true) {
       gl.beforeWrite = ensureCurrent;
       await withPublicationAudit(job.forge, projectId, prNumber, headRef, async () => {
@@ -205,7 +270,7 @@ export async function runReview(
         );
       });
     }
-    log(`pr=${prNumber} found=${result.findings.length} kept=${kept.length}`);
+    log(`pr=${prNumber} kept=${kept.length}`);
     return outcome;
   } catch (e) {
     if (options.signal?.aborted || e instanceof PublicationStopped)

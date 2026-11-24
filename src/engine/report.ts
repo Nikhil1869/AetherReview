@@ -12,7 +12,15 @@ export function meetsGate(findings: Finding[], threshold: Severity): boolean {
 
 export function findingId(finding: Finding): string {
   return createHash("sha256")
-    .update(JSON.stringify([finding.file, finding.line, finding.category, finding.evidence]))
+    .update(
+      JSON.stringify([
+        finding.file,
+        finding.line,
+        finding.category,
+        finding.evidence,
+        ...(finding.rule ? [finding.rule] : []),
+      ]),
+    )
     .digest("hex");
 }
 
@@ -49,7 +57,7 @@ export function renderSarif(outcome: ReviewOutcome) {
   const results =
     outcome.status === "completed"
       ? outcome.result.findings.map((finding) => ({
-          ruleId: finding.category,
+          ruleId: finding.rule ?? finding.category,
           level: { critical: "error", warning: "warning", info: "note" }[finding.severity],
           message: { text: `${finding.title}\n\n${finding.comment}` },
           partialFingerprints: { aetherReviewFinding: finding.id ?? findingId(finding) },
@@ -59,7 +67,7 @@ export function renderSarif(outcome: ReviewOutcome) {
                 artifactLocation: {
                   uri: finding.file.split("/").map(encodeURIComponent).join("/"),
                 },
-                region: { startLine: finding.line },
+                region: { startLine: finding.line, endLine: finding.endLine ?? finding.line },
               },
             },
           ],
@@ -67,6 +75,9 @@ export function renderSarif(outcome: ReviewOutcome) {
             confidence: finding.confidence,
             evidence: finding.evidence,
             suggestion: finding.suggestion,
+            tool: finding.tool,
+            verification: finding.verification,
+            revision: finding.revision,
           },
         }))
       : [];
@@ -88,5 +99,24 @@ export function renderSarif(outcome: ReviewOutcome) {
         results,
       },
     ],
+  };
+}
+
+export function renderRdjson(outcome: ReviewOutcome) {
+  return {
+    source: { name: "AetherReview" },
+    diagnostics:
+      outcome.status === "completed"
+        ? outcome.result.findings.map((f) => ({
+            message: f.title + "\n" + f.comment,
+            severity: { critical: "ERROR", warning: "WARNING", info: "INFO" }[f.severity],
+            source: { name: f.tool ?? "AetherReview" },
+            code: { value: f.rule ?? f.category },
+            location: {
+              path: f.file,
+              range: { start: { line: f.line }, end: { line: f.endLine ?? f.line } },
+            },
+          }))
+        : [],
   };
 }

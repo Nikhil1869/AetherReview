@@ -45,6 +45,7 @@
     "ink-text-input": "^6.0.0",
     "openai": "^6.42.0",
     "react": "^19.2.7",
+    "typescript": "6.0.3",
     "yaml": "^2.9.0",
     "zod": "^4.6.7"
   },
@@ -59,7 +60,6 @@
     "ink-testing-library": "^4.0.0",
     "prettier": "^3.8.3",
     "tsup": "^8.5.1",
-    "typescript": "^6.0.3",
     "typescript-eslint": "^8.60.1",
     "vitest": "^4.1.8"
   },
