@@ -9,6 +9,8 @@ import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/
 
 import { resolveToken } from "./config.js";
 import { auditMutation } from "./publicationAudit.js";
+import { safeSourcePath } from "./sourcePath.js";
+import { MAX_SOURCE_BYTES } from "./sourceBody.js";
 import {
   GitHubRestClient,
   readDiffPages,
@@ -144,6 +146,7 @@ export class GitHubMcpClient implements ForgeClient {
   }
 
   async getFile(projectId: string, path: string, ref: string): Promise<string | null> {
+    if (!safeSourcePath(path)) return null;
     const { owner, repo } = this.split(projectId);
     const client = await this.ensure();
     const res = await client.callTool({
@@ -154,7 +157,7 @@ export class GitHubMcpClient implements ForgeClient {
     // File body arrives as an EmbeddedResource; TextContent is just a status line.
     for (const item of (res.content as any[]) ?? []) {
       const text = item?.resource?.text;
-      if (typeof text === "string") return text;
+      if (typeof text === "string" && Buffer.byteLength(text) <= MAX_SOURCE_BYTES) return text;
     }
     return null;
   }

@@ -2,6 +2,8 @@
  * clients here cover GitLab and the GITHUB_BACKEND=rest escape hatch. */
 
 import { ForgeSession } from "./forgeSession.js";
+import { safeSourcePath } from "./sourcePath.js";
+import { readSourceBody } from "./sourceBody.js";
 import { gitlabUrl, resolveToken } from "./config.js";
 import type { DiffRefs, FileDiff, MrInfo } from "./types.js";
 
@@ -136,11 +138,12 @@ export class GitLabClient implements ForgeClient {
   }
 
   async getFile(projectId: string, path: string, ref: string): Promise<string | null> {
+    if (!safeSourcePath(path)) return null;
     const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/repository/files/${encodeURIComponent(path)}/raw?ref=${encodeURIComponent(ref)}`,
       { headers: this.headers },
     );
-    return r.ok ? r.text() : null;
+    return readSourceBody(r);
   }
 
   async searchBlobs(projectId: string, query: string, ref: string) {
@@ -336,13 +339,13 @@ export class GitHubRestClient implements ForgeClient {
 
   async getFile(projectId: string, path: string, ref: string): Promise<string | null> {
     const segments = path.split("/");
-    if (segments.some((part) => !part || part === "." || part === "..")) return null;
+    if (!safeSourcePath(path)) return null;
     const encoded = segments.map(encodeURIComponent).join("/");
     const r = await this.session.request(
       `${this.base}/repos/${projectId}/contents/${encoded}?ref=${encodeURIComponent(ref)}`,
       { headers: { ...this.headers, Accept: "application/vnd.github.raw" } },
     );
-    return r.ok ? r.text() : null;
+    return readSourceBody(r);
   }
 
   async searchBlobs(projectId: string, query: string) {

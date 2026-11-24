@@ -1,0 +1,33 @@
+# Threat model and release decision
+
+AetherReview runs with the developer's OS permissions. Reviewed repositories, changed source, diff metadata and provider responses cross trust boundaries. The local credential store, selected executable, explicitly installed global norm transforms and the configured forge and inference endpoints must be trusted. The intended deployment uses a private app home on a local filesystem.
+
+| Boundary                                   | Controls and evidence                                                                                                                                                                                                        | Remaining exposure                                                                                                                                                                    |
+| ------------------------------------------ | ---------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- | ------------------------------------------------------------------------------------------------------------------------------------------------------------------------------------- |
+| Repository to local filesystem or Git      | Git arguments are passed separately. Local context rejects symlinks and repository metadata. Portable path validation applies to both sides of diffs and to remote context paths.                                            | A process that controls the user's own app home or executable can act as the user. Some legal but nonportable filenames are omitted.                                                  |
+| Review inputs to provider                  | Patch and context filters check sensitive paths and high-confidence secrets. User-supplied norms and source remain untrusted data. Explicit forced verdicts trigger abstention.                                              | Secret patterns are incomplete. Semantically false findings and paraphrased prompt injection remain possible. Hosted configuration sends source off the machine.                      |
+| Configuration, commands and external tools | Repository configuration cannot activate code transforms, set endpoint URLs or supply credentials. Installed global transforms have user privileges. Git filters and external diff drivers are disabled during local review. | Tool and dependency upgrades require maintainer review. Untrusted analyzer plug-ins and project build scripts are unsuitable for automatic review.                                    |
+| Forge, MCP and network destinations        | Credentials are scoped to configured origins. Redirects are disabled. Read-only MCP mode is used for previews. Sensitive operations use the centralized pipeline and check current refs before mutations.                    | Users must trust custom endpoints. A service bound to loopback can still be untrusted. Browser-facing mutation endpoints would require a separate origin and authorization design.    |
+| Concurrent or replayed publication         | Local process tickets exclude concurrent local writers. Owner-scoped markers handle retries. Ambiguous drafts stop. The mutation journal records attempted calls and outcomes.                                               | A forge response can be lost after success. Cross-host publishing and same-account human edits do not share a lock. Revision checks and server mutations are separate operations.     |
+| Work and output amplification              | The context builder bounds source lookups, caches misses within the review, prioritizes changed files, and limits REST source bodies while streaming. Model output is schema-checked and validated against additions.        | Generic MCP response sizes and untrusted model response payloads require their own transport limits. Context limits reduce analysis coverage. A matched quote does not prove a claim. |
+| Supply chain                               | Runtime and development advisories are measured separately. The package harness installs the built tarball into a clean temporary location.                                                                                  | Development vulnerabilities still matter to maintainers and CI even when they are absent from the installed CLI.                                                                      |
+
+## Context pressure measurement
+
+The synthetic in-memory source had 80 distinct unresolved relative imports and 80 exported constants. Seven sequential trials used one changed file, Node 24.16.0 on Windows and the default file budget of 12. Before bounding discovery, each trial made 565 file reads and six symbol searches. Afterwards each made 48 reads and zero searches. Both retained the single available changed file. The latter reports that some relationships were not checked. This measures work amplification and local CPU time with a fixture, not live network latency. Raw elapsed times in milliseconds follow in execution order.
+
+| Implementation     | Times in ms                                      |
+| ------------------ | ------------------------------------------------ |
+| Baseline           | 14.116, 3.866, 3.698, 4.728, 3.465, 2.678, 3.67  |
+| With lookup budget | 17.527, 1.578, 1.237, 1.188, 1.158, 1.821, 1.078 |
+
+## Release checklist
+
+- [ ] Verify restricted GitLab access and authorized real writes on explicitly disposable fixtures.
+- [ ] Verify rendered anchors, partial publication recovery and protection of concurrent human drafts.
+- [ ] Achieve the defined quality targets on independently labeled held-out data and disclose coverage.
+- [ ] Resolve or explicitly accept all relevant dependency risks.
+- [ ] Verify all six CI jobs, clean installation and current documentation at the exact release commit.
+- [ ] Obtain explicit maintainer approval for npm publication and a public release.
+
+Release remains on hold. [Publication recovery](publication-recovery.md) · [Earlier local model measurements](p0-verification.md)

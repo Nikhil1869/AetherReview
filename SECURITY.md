@@ -14,3 +14,5 @@ Use GitHub's private vulnerability reporting for the repository if it is availab
 - Remote posting requires explicit authorization. Verify the account and repository scope before enabling automatic publishing. Local previews and exported reports may contain snippets of proprietary source.
 
 The [P0 verification report](docs/p0-verification.md) records the tested ownership and publication guards, sensitive-source handling and remaining live acceptance requirements.
+
+The [threat model and release checklist](docs/threat-model.md) identifies trust boundaries, tested controls, operational assumptions and unresolved risks.

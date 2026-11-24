@@ -35,6 +35,8 @@ describe("reviewDiff", () => {
     [".env", "public.txt"],
     ["public.txt", "nested/config.PEM"],
     [".ssh/id_ed25519", "readme"],
+    ["src/a.ts", "../outside.ts"],
+    [".git/config", "src/a.ts"],
   ])("withholds both sides of sensitive renames: %s to %s", (oldPath, newPath) => {
     expect(
       reviewDiff(

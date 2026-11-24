@@ -24,6 +24,7 @@ export function installFetch(handler: FetchHandler) {
       ok: spec.ok ?? status < 400,
       status,
       headers: new Headers(spec.headers),
+      body: new Response(spec.text ?? (spec.json != null ? JSON.stringify(spec.json) : "")).body,
       json: async () => spec.json ?? {},
       text: async () => spec.text ?? (spec.json != null ? JSON.stringify(spec.json) : ""),
     } as unknown as Response;
