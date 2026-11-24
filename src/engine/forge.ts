@@ -39,6 +39,7 @@ export async function readDiffPages<T>(
 
 export interface ForgeClient {
   beforeWrite?: () => Promise<void>;
+  needsSummaryRecovery?(projectId: string, prNumber: number, refs: DiffRefs): Promise<boolean>;
   close(): Promise<void>;
   getMr(projectId: string, prNumber: number): Promise<MrInfo>;
   getDiffs(projectId: string, prNumber: number): Promise<FileDiff[]>;
@@ -257,6 +258,11 @@ export class GitLabClient implements ForgeClient {
     return false; // GitLab has no formal review object; poster falls back to sticky note
   }
 
+  async needsSummaryRecovery() {
+    // GitLab stores the summary in the sticky note that postStatus just edited.
+    return true;
+  }
+
   async listOpenPrs(projectId: string) {
     const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/merge_requests?state=opened&per_page=100`,
@@ -397,6 +403,16 @@ export class GitHubRestClient implements ForgeClient {
         this.base + "/repos/" + projectId + "/pulls/" + prNumber + "/reviews",
       )
     ).filter((r) => r.user?.id === actor);
+  }
+
+  async needsSummaryRecovery(projectId: string, prNumber: number, refs: DiffRefs) {
+    const reviews = await this.ownedReviews(projectId, prNumber);
+    return (
+      reviews.some((r) => r.state === "PENDING") ||
+      !reviews.some(
+        (r) => r.commit_id === refs.head_sha && r.body?.split("\n", 1)[0] === REVIEW_MARKER,
+      )
+    );
   }
 
   async draftComments(projectId: string, prNumber: number, reviewId: number) {

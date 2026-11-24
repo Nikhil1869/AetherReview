@@ -8,6 +8,7 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 import { resolveToken } from "./config.js";
+import { auditMutation } from "./publicationAudit.js";
 import {
   GitHubRestClient,
   readDiffPages,
@@ -75,13 +76,16 @@ export class GitHubMcpClient implements ForgeClient {
     opts?: { soft?: boolean },
   ): Promise<any> {
     const client = await this.ensure();
-    if (
-      ["pull_request_review_write", "add_comment_to_pending_review", "add_issue_comment"].includes(
-        tool,
-      )
-    )
-      await this.guard?.();
-    const res = await client.callTool({ name: tool, arguments: args });
+    const mutation = [
+      "pull_request_review_write",
+      "add_comment_to_pending_review",
+      "add_issue_comment",
+    ].includes(tool);
+    if (mutation) await this.guard?.();
+    const send = () => client.callTool({ name: tool, arguments: args });
+    const res = mutation
+      ? await auditMutation(tool, String(args.method ?? tool), send, (r) => !r.isError)
+      : await send();
     const text = ((res.content as any[]) ?? [])
       .map((c) => (typeof c?.text === "string" ? c.text : ""))
       .join("");
@@ -255,6 +259,10 @@ export class GitHubMcpClient implements ForgeClient {
       body,
     });
     return true;
+  }
+
+  async needsSummaryRecovery(projectId: string, prNumber: number, refs: DiffRefs) {
+    return this.rest().needsSummaryRecovery(projectId, prNumber, refs);
   }
 
   async submitReview(projectId: string, prNumber: number, body: string, refs: DiffRefs) {

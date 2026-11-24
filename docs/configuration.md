@@ -22,7 +22,7 @@ Set the location with `AETHERREVIEW_HOME`; defaults to `~/.aetherreview`. Manage
 | `norms/`           | custom norm **packs** (`*.yml`) and code **transforms** (`*.mjs`) — see [Custom norms](#custom-norms-global--packs--plugins). |
 | `watcher.log`      | log output (path constant; used by the roadmap daemon).                                                                       |
 | `watcher.pid`      | daemon pid (roadmap).                                                                                                         |
-| `locks/`           | per-PR lock files (10-min TTL) — see [`state.ts`](./engine-reference.md#statets).                                             |
+| `locks/`           | per-target process tickets (local filesystem) — see [`state.ts`](./engine-reference.md#statets).                              |
 
 > **These file shapes are a compatibility contract** (carried over from the old Python version).
 > Additive changes only — never rename or remove existing fields. See

@@ -213,7 +213,7 @@ program
       const { createInterface } = await import("node:readline/promises");
       const rl = createInterface({ input: process.stdin, output: process.stdout });
       const answer = await rl.question(
-        `This deletes everything in ${HOME} (tokens, model config, logs). Type "reset" to confirm: `,
+        `This deletes saved tokens, model configuration and watcher logs in ${HOME}. Type "reset" to confirm: `,
       );
       rl.close();
       if (answer.trim().toLowerCase() !== "reset") {

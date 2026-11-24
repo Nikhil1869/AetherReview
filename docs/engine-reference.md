@@ -34,7 +34,7 @@ Sequence (see [Architecture › data flow](./architecture.md#the-review-data-flo
 5. `buildContext` → `review` (LLM).
 6. Filter source-validated findings by `confidenceThreshold` and cap at `maxFindings`.
 7. Recheck the remote head and base. Authorized runs post a status note and call `finalize`. Previews return their results locally.
-8. `finally`: `forge.close()` + `state.releaseLock()`. A failure calls `markFailed` (best-effort).
+8. `finally`: `forge.close()` + `state.releaseLock()`. A mutation failure stops further writes. Retry reconciles the owned artifacts at the reviewed head.
 
 `reviewDiff()` selects whole file patches within the input budget. Local Git reviews read working-tree, index, or immutable commit snapshots and use the same norms and finding validation. The branch-push watcher calls `runPushReview`.
 
@@ -87,7 +87,7 @@ Key functions:
 | `loadConfig()` / `updateConfig(section, fields)` | read / merge-write `config.json`.                                                                                                                                                                                     |
 | `reviewerSettings()`                             | resolved `{ apiKey, baseUrl, model, botName }`. **Env vars override the store** (`REVIEWER_API_KEY`, `GEMINI_API_KEY`, `REVIEWER_MODEL`, `REVIEWER_BASE_URL`, `REVIEWER_BOT_NAME`). Default model `gemini-2.5-flash`. |
 | `getBotName(model, custom?)`                     | maps a model to a display name (`claude`→"Claude review", etc.).                                                                                                                                                      |
-| `resetAll()`                                     | wipes credentials, config, log, pid, and the `locks/` dir.                                                                                                                                                            |
+| `resetAll()`                                     | wipes credentials, config, watcher log and pid. Active review locks survive reset.                                                                                                                                    |
 | `limits`                                         | `maxDiffChars` (40k), `maxContextFiles` (12), `maxContextChars` (40k) — env-overridable.                                                                                                                              |
 
 See [Configuration](./configuration.md) for the full env-var matrix and file shapes.
@@ -311,8 +311,7 @@ In-process + on-disk coordination. Keyed by `${projectId}#${prNumber}`.
 - `seenEvent(uuid)` — event-dedup with a 1-hour TTL.
 - `recordLatest()` / `isLatest()` — track the latest head SHA per PR so an in-flight review for
   an old SHA is **superseded** (skipped) when a newer push arrives.
-- `acquireLock()` / `releaseLock()` — a dual lock: an in-process `Map` **and** a lock file under
-  `~/.aetherreview/locks/` (10-min TTL), so concurrent processes don't double-review. Always
+- `acquireLock()` / `releaseLock()` — registers a unique process ticket under `~/.aetherreview/locks/` before checking for other live owners. A dead owner's ticket can be reclaimed. Always
   released in the pipeline's `finally`.
 
 See [Invariant 7](./invariants.md#7-one-review-at-a-time-per-pr).

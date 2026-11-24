@@ -121,7 +121,7 @@ export async function finalize(
   // A re-review that added nothing new must not repost an identical summary
   // review (MCP can't edit reviews, so each submit is a new conversation
   // entry) — the recheck note below covers it instead.
-  if (posted > 0 || !isReReview) {
+  if (posted > 0 || !isReReview || (await gl.needsSummaryRecovery?.(projectId, prNumber, refs))) {
     if (await gl.submitReview(projectId, prNumber, summary, refs)) {
       await gl.editNote(
         projectId,

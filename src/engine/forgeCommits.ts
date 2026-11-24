@@ -4,6 +4,7 @@
 
 import { gitlabUrl, resolveToken } from "./config.js";
 import { ForgeSession } from "./forgeSession.js";
+import { forgeRequest } from "./publicationAudit.js";
 import { newSideLines } from "./diff.js";
 import type { FileDiff, Forge } from "./types.js";
 
@@ -30,7 +31,7 @@ const gitlabHeaders = () => ({ "PRIVATE-TOKEN": resolveToken("gitlab") ?? "" });
 async function githubFetch(path: string, init?: RequestInit): Promise<Response> {
   const { ensureFreshGithubToken } = await import("./githubAuth.js");
   await ensureFreshGithubToken();
-  return fetch(`${githubBase()}${path}`, {
+  return forgeRequest(`${githubBase()}${path}`, {
     ...init,
     redirect: "error",
     headers: { ...githubHeaders(), ...(init?.headers as Record<string, string>) },
@@ -39,7 +40,7 @@ async function githubFetch(path: string, init?: RequestInit): Promise<Response> 
 }
 
 async function gitlabFetch(path: string, init?: RequestInit): Promise<Response> {
-  return fetch(`${gitlabUrl()}/api/v4${path}`, {
+  return forgeRequest(`${gitlabUrl()}/api/v4${path}`, {
     ...init,
     headers: { ...gitlabHeaders(), ...(init?.headers as Record<string, string>) },
     redirect: "error",
@@ -152,8 +153,13 @@ export function diffPosition(patch: string, line: number): number | null {
   return null;
 }
 
-/** Post a comment on a commit; inline when the anchor maps into the patch,
- * commit-level otherwise. Returns false on failure (caller falls back). */
+function commitCommentResult(response: Response, anchored: boolean): boolean {
+  if (response.ok) return true;
+  if (anchored && [400, 422].includes(response.status)) return false;
+  throw Error("Commit comment publication failed (HTTP " + response.status + ").");
+}
+
+/** Only a rejected inline position is eligible for the plain-comment fallback. */
 export async function postCommitComment(
   forge: Forge,
   projectId: string,
@@ -173,7 +179,7 @@ export async function postCommitComment(
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(payload),
     });
-    return r.ok;
+    return commitCommentResult(r, payload.position != null);
   }
   const payload: Record<string, unknown> = { note: body };
   if (anchor) {
@@ -189,5 +195,5 @@ export async function postCommitComment(
       body: JSON.stringify(payload),
     },
   );
-  return r.ok;
+  return commitCommentResult(r, anchor != null);
 }
