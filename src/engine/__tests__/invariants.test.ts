@@ -18,6 +18,7 @@ import { loadNorms } from "../norms.js";
 import { finalize } from "../poster.js";
 import { acquireLock, isLatest, recordLatest, releaseLock } from "../state.js";
 import type { DiffRefs, Finding, MrInfo, ReviewResult } from "../types.js";
+import { installFetch } from "./helpers/fetchMock.js";
 import { makeFakeForge } from "./helpers/fakeForge.js";
 
 const HOME = process.env.AETHERREVIEW_HOME as string;
@@ -154,10 +155,21 @@ describe("Invariant 5 — GitHub MCP posts exactly ONE review (pending-review fl
   it("creates one pending review, adds N inline comments, submits once", async () => {
     setForge("github", { token: "ghp_x", method: "pat", backend: "mcp" });
     const { GitHubMcpClient } = await import("../forgeMcp.js");
+    installFetch((url) =>
+      url.endsWith("/user")
+        ? { json: { id: 42 } }
+        : url.includes("/comments?")
+          ? { json: [] }
+          : {
+              json: mcp.calls.some((c) => c.args.method === "create")
+                ? [{ id: 9, user: { id: 42 }, state: "PENDING", commit_id: refs.head_sha }]
+                : [],
+            },
+    );
     const c = new GitHubMcpClient();
     await c.postInlineNote("o/r", 1, "a.ts", 5, "b1", refs);
     await c.postInlineNote("o/r", 1, "a.ts", 9, "b2", refs);
-    await c.submitReview("o/r", 1, "summary");
+    await c.submitReview("o/r", 1, "summary", refs);
 
     const creates = mcp.calls.filter(
       (x) => x.name === "pull_request_review_write" && x.args.method === "create",

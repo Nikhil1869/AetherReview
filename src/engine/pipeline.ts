@@ -4,13 +4,15 @@ import { buildContext } from "./bundler.js";
 import { reviewLimits } from "./config.js";
 import { newSideLines, reviewDiff } from "./diff.js";
 import { describeError, getForgeClient, getRestForgeClient, type ForgeClient } from "./forge.js";
-import { compareDiffs } from "./forgeCommits.js";
+import { branchHead, compareDiffs } from "./forgeCommits.js";
 import { readLocalChanges, type LocalTarget } from "./localGit.js";
 import { applyExcludes, loadNorms } from "./norms.js";
 import { finalize, finalizeCommit, markFailed } from "./poster.js";
 import { review } from "./reviewer.js";
 import * as state from "./state.js";
 import type { FileDiff, Job, MrInfo, Norms, PushJob, ReviewResult } from "./types.js";
+
+class PublicationStopped extends Error {}
 
 export type Logger = (msg: string) => void;
 
@@ -126,7 +128,7 @@ export async function runReview(
   let gl: ForgeClient | null = null;
   let statusId: number | string | null = null;
   try {
-    gl = await getForgeClient(job.forge);
+    gl = await getForgeClient(job.forge, options.publish !== true);
     const mr = await gl.getMr(projectId, prNumber);
     const refs = mr.diffRefs;
     const headRef = mr.headSha;
@@ -141,7 +143,8 @@ export async function runReview(
     if (!diffs.length) {
       return skip("nothing to review");
     }
-    const norms = await loadNorms(gl, projectId, mr, {
+    const sourceProject = mr.sourceProjectId ?? projectId;
+    const norms = await loadNorms(gl, sourceProject, mr, {
       forge: job.forge,
       diffLines: countAddedLines(diffs),
     });
@@ -157,22 +160,28 @@ export async function runReview(
         `${omittedFiles} changed file(s) unavailable or over budget. Run a preview for partial results.`,
       );
     }
-    const context = await buildContext(gl, projectId, headRef, diff.files, norms, log);
+    const context = await buildContext(gl, sourceProject, headRef, diff.files, norms, log);
     const result = await review(diff, context, norms, log, options.signal);
     const kept = acceptedFindings(result, norms);
-    const current = await gl.getMr(projectId, prNumber);
-    if (options.signal?.aborted) return skip("cancelled");
-    if (
-      current.headSha !== headRef ||
-      current.diffRefs?.head_sha !== headRef ||
-      current.diffRefs.base_sha !== refs.base_sha ||
-      current.diffRefs.start_sha !== refs.start_sha ||
-      (headSha && !state.isLatest(projectId, prNumber, headRef))
-    )
-      return skip("superseded by a newer head or base");
-
+    const client = gl;
+    const ensureCurrent = async () => {
+      const current = await client.getMr(projectId, prNumber);
+      if (options.signal?.aborted) throw new PublicationStopped("cancelled");
+      if (
+        current.headSha !== headRef ||
+        current.diffRefs?.head_sha !== headRef ||
+        current.diffRefs.base_sha !== refs.base_sha ||
+        current.diffRefs.start_sha !== refs.start_sha ||
+        current.sourceProjectId !== mr.sourceProjectId ||
+        !state.isLatest(projectId, prNumber, headRef)
+      ) {
+        throw new PublicationStopped("superseded by a newer head or base");
+      }
+    };
+    await ensureCurrent();
     const outcome = completedReview(headRef, kept, omittedFiles);
     if (options.publish === true) {
+      gl.beforeWrite = ensureCurrent;
       statusId = await gl.postStatus(
         projectId,
         prNumber,
@@ -184,7 +193,8 @@ export async function runReview(
     log(`pr=${prNumber} found=${result.findings.length} kept=${kept.length}`);
     return outcome;
   } catch (e) {
-    if (options.signal?.aborted && statusId == null) return skip("cancelled");
+    if (options.signal?.aborted || e instanceof PublicationStopped)
+      return skip(options.signal?.aborted ? "cancelled" : (e as Error).message);
     const message = describeError(e);
     log(`review failed pr=${prNumber}: ${message}`);
     if (gl && statusId != null) await markFailed(gl, projectId, prNumber, statusId).catch(() => {});
@@ -250,7 +260,25 @@ export async function runPushReview(
     if (options.signal?.aborted || !state.isLatest(projectId, ref, headSha)) return;
     log(`branch=${branch} found=${result.findings.length} kept=${kept.length}`);
     const outcome = completedReview(headSha, kept, 0);
-    await finalizeCommit(forge, projectId, branch, headSha, filtered, outcome.result, kept, log);
+    await finalizeCommit(
+      forge,
+      projectId,
+      branch,
+      headSha,
+      filtered,
+      outcome.result,
+      kept,
+      log,
+      async () => {
+        const current = await branchHead(forge, projectId, branch);
+        if (
+          options.signal?.aborted ||
+          current !== headSha ||
+          !state.isLatest(projectId, ref, headSha)
+        )
+          throw new PublicationStopped("Branch publication cancelled or superseded.");
+      },
+    );
   } catch (e) {
     log(`review failed branch=${branch}: ${describeError(e)}`);
   } finally {

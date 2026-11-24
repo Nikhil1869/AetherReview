@@ -20,23 +20,37 @@ import type { DiffRefs, FileDiff, MrInfo } from "./types.js";
 const MCP_URL = "https://api.githubcopilot.com/mcp/";
 
 export class GitHubMcpClient implements ForgeClient {
+  constructor(private readonly readOnly = false) {}
+
+  private readonly token = resolveToken("github");
   private client: Client | null = null;
-  private hasPending = new Set<string>();
+  private drafts = new Map<string, number>();
+  private guard?: () => Promise<void>;
+  set beforeWrite(check: () => Promise<void>) {
+    this.guard = check;
+    this.rest().beforeWrite = check;
+  }
   private restCompanion: GitHubRestClient | null = null;
 
   /** REST with the same token — covers what the MCP server can't (comment edits)
    * and unifies note listing (issue + review comments) for marker dedup. */
   private rest(): GitHubRestClient {
-    return (this.restCompanion ??= new GitHubRestClient());
+    return (this.restCompanion ??= new GitHubRestClient(this.token));
   }
 
   private async ensure(): Promise<Client> {
     if (this.client) return this.client;
-    const token = resolveToken("github");
+    const token = this.token;
     if (!token)
       throw new Error("GitHub not connected. Run: aetherreview (setup) or set GITHUB_TOKEN");
     const transport = new StreamableHTTPClientTransport(new URL(MCP_URL), {
-      requestInit: { headers: { Authorization: `Bearer ${token}` } },
+      requestInit: {
+        redirect: "error",
+        headers: {
+          Authorization: `Bearer ${token}`,
+          ...(this.readOnly ? { "X-MCP-Readonly": "true" } : {}),
+        },
+      },
     });
     const client = new Client({ name: "aether-review", version: "2.1.0" });
     await client.connect(transport);
@@ -61,6 +75,12 @@ export class GitHubMcpClient implements ForgeClient {
     opts?: { soft?: boolean },
   ): Promise<any> {
     const client = await this.ensure();
+    if (
+      ["pull_request_review_write", "add_comment_to_pending_review", "add_issue_comment"].includes(
+        tool,
+      )
+    )
+      await this.guard?.();
     const res = await client.callTool({ name: tool, arguments: args });
     const text = ((res.content as any[]) ?? [])
       .map((c) => (typeof c?.text === "string" ? c.text : ""))
@@ -85,6 +105,7 @@ export class GitHubMcpClient implements ForgeClient {
       pullNumber: prNumber,
     });
     return {
+      sourceProjectId: d.head.repo?.full_name,
       sourceBranch: d.head.ref,
       targetBranch: d.base.ref,
       headSha: d.head.sha,
@@ -164,191 +185,109 @@ export class GitHubMcpClient implements ForgeClient {
     return this.rest().postStatus(projectId, prNumber, body);
   }
 
+  private async draft(projectId: string, prNumber: number, head: string, justCreated = false) {
+    const rest = this.rest();
+    const reviews = await rest.ownedReviews(projectId, prNumber);
+    const pending = reviews.filter((r) => r.state === "PENDING");
+    const key = projectId + "#" + prNumber;
+    const known = this.drafts.get(key);
+    if (!pending.length && !known && !justCreated) return { id: null, comments: [], reviews };
+    const [draft] = pending;
+    if (
+      pending.length !== 1 ||
+      typeof draft.id !== "number" ||
+      !Number.isSafeInteger(draft.id) ||
+      draft.commit_id !== head ||
+      (known && known !== draft.id) ||
+      (draft.body && draft.body !== REVIEW_MARKER)
+    ) {
+      throw Error(
+        "The pending review changed or belongs to another revision. Publication stopped.",
+      );
+    }
+    const comments = await rest.draftComments(projectId, prNumber, draft.id);
+    const actor = await rest.session.actorId();
+    if (
+      (!comments.length && !justCreated && !known && draft.body !== REVIEW_MARKER) ||
+      comments.some(
+        (c) =>
+          c.user?.id !== actor ||
+          c.commit_id !== head ||
+          typeof c.body !== "string" ||
+          c.body.split("\n", 1)[0] !== "<!-- ct:f:" + c.path + ":" + c.line + " -->",
+      )
+    )
+      throw Error("The pending review contains an unrecognized draft. Publication stopped.");
+    this.drafts.set(key, draft.id);
+    return { id: draft.id, comments, reviews };
+  }
+
   async postInlineNote(
     projectId: string,
     prNumber: number,
     filePath: string,
     newLine: number,
     body: string,
-    _refs: DiffRefs,
-  ): Promise<boolean> {
-    const { owner, repo } = this.split(projectId);
-    const key = `${owner}/${repo}#${prNumber}`;
-    if (!this.hasPending.has(key)) {
-      const created = await this.call(
-        "pull_request_review_write",
-        {
-          method: "create",
-          owner,
-          repo,
-          pullNumber: prNumber,
-        },
-        { soft: true },
-      );
-      if (created == null) {
-        // a crashed run may have left a pending review (create fails while one
-        // exists) — reuse it so its comments finally publish on submit
-        const reviews = await this.call(
-          "pull_request_read",
-          {
-            method: "get_reviews",
-            owner,
-            repo,
-            pullNumber: prNumber,
-            perPage: 100,
-          },
-          { soft: true },
-        );
-        const blob =
-          reviews == null ? "" : typeof reviews === "string" ? reviews : JSON.stringify(reviews);
-        if (!blob.includes("PENDING")) return false;
-      }
-      this.hasPending.add(key);
+    refs: DiffRefs,
+  ) {
+    const args = { ...this.split(projectId), pullNumber: prNumber };
+    let pending = await this.draft(projectId, prNumber, refs.head_sha);
+    if (pending.id == null) {
+      await this.call("pull_request_review_write", {
+        ...args,
+        method: "create",
+        commitID: refs.head_sha,
+      });
+      pending = await this.draft(projectId, prNumber, refs.head_sha, true);
     }
-    const added = await this.call(
-      "add_comment_to_pending_review",
-      {
-        owner,
-        repo,
-        pullNumber: prNumber,
-        path: filePath,
-        line: newLine,
-        side: "RIGHT",
-        subjectType: "LINE",
-        body,
-      },
-      { soft: true },
-    );
-    return added != null;
+    if (
+      pending.comments.some(
+        (c) => c.path === filePath && typeof c.line === "number" && Math.abs(c.line - newLine) <= 3,
+      )
+    )
+      return true;
+    await this.call("add_comment_to_pending_review", {
+      ...args,
+      path: filePath,
+      line: newLine,
+      side: "RIGHT",
+      subjectType: "LINE",
+      body,
+    });
+    return true;
   }
 
-  async submitReview(projectId: string, prNumber: number, body: string): Promise<boolean> {
-    const { owner, repo } = this.split(projectId);
-    const key = `${owner}/${repo}#${prNumber}`;
-    const full = `${REVIEW_MARKER}\n${body}`;
-
-    if (this.hasPending.has(key)) {
-      const submitted = await this.call(
-        "pull_request_review_write",
-        {
-          method: "submit_pending",
-          owner,
-          repo,
-          pullNumber: prNumber,
-          event: "COMMENT",
-          body: full,
-        },
-        { soft: true },
-      );
-      this.hasPending.delete(key);
-      return submitted != null;
-    }
-    // No new inline findings this run.
-    const reviews = await this.call(
-      "pull_request_read",
-      {
-        method: "get_reviews",
-        owner,
-        repo,
-        pullNumber: prNumber,
-        perPage: 100,
-      },
-      { soft: true },
-    );
-    const blob =
-      reviews == null ? "" : typeof reviews === "string" ? reviews : JSON.stringify(reviews);
-    // a leftover pending review from a crashed run blocks future ones — publish it
-    if (blob.includes("PENDING")) {
-      const submitted = await this.call(
-        "pull_request_review_write",
-        {
-          method: "submit_pending",
-          owner,
-          repo,
-          pullNumber: prNumber,
-          event: "COMMENT",
-          body: full,
-        },
-        { soft: true },
-      );
-      if (submitted != null) return true;
-    }
-    // only post a summary review if none of ours exists
-    if (blob.includes(REVIEW_MARKER)) return true;
-    const created = await this.call(
-      "pull_request_review_write",
-      {
+  async submitReview(projectId: string, prNumber: number, body: string, refs: DiffRefs) {
+    const { id, reviews } = await this.draft(projectId, prNumber, refs.head_sha);
+    const args = {
+      ...this.split(projectId),
+      pullNumber: prNumber,
+      event: "COMMENT",
+      body: REVIEW_MARKER + "\n" + body,
+    };
+    if (id != null) {
+      await this.call("pull_request_review_write", { ...args, method: "submit_pending" });
+      this.drafts.delete(projectId + "#" + prNumber);
+    } else if (
+      !reviews.some(
+        (r) => r.commit_id === refs.head_sha && r.body?.split("\n", 1)[0] === REVIEW_MARKER,
+      )
+    ) {
+      await this.call("pull_request_review_write", {
+        ...args,
         method: "create",
-        owner,
-        repo,
-        pullNumber: prNumber,
-        event: "COMMENT",
-        body: full,
-      },
-      { soft: true },
-    );
-    return created != null;
+        commitID: refs.head_sha,
+      });
+    }
+    return true;
   }
 
   async addLabels(projectId: string, prNumber: number, labels: string[]) {
-    const { owner, repo } = this.split(projectId);
-    // issue_write update replaces the set — merge with existing first.
-    const cur = await this.call(
-      "issue_read",
-      {
-        method: "get",
-        owner,
-        repo,
-        issue_number: prNumber,
-      },
-      { soft: true },
-    );
-    const existing = new Set<string>(
-      (cur?.labels ?? []).map((l: any) => (typeof l === "string" ? l : l?.name)).filter(Boolean),
-    );
-    for (const l of labels) existing.add(l);
-    await this.call(
-      "issue_write",
-      {
-        method: "update",
-        owner,
-        repo,
-        issue_number: prNumber,
-        labels: [...existing].sort(),
-      },
-      { soft: true },
-    );
+    return this.rest().addLabels(projectId, prNumber, labels);
   }
 
   async removeLabels(projectId: string, prNumber: number, labels: string[]) {
-    const { owner, repo } = this.split(projectId);
-    // issue_write update replaces the set — read, drop ours, write back.
-    const cur = await this.call(
-      "issue_read",
-      {
-        method: "get",
-        owner,
-        repo,
-        issue_number: prNumber,
-      },
-      { soft: true },
-    );
-    const existing = (cur?.labels ?? [])
-      .map((l: any) => (typeof l === "string" ? l : l?.name))
-      .filter(Boolean) as string[];
-    const next = existing.filter((l) => !labels.includes(l));
-    if (next.length === existing.length) return; // nothing to remove
-    await this.call(
-      "issue_write",
-      {
-        method: "update",
-        owner,
-        repo,
-        issue_number: prNumber,
-        labels: next.sort(),
-      },
-      { soft: true },
-    );
+    return this.rest().removeLabels(projectId, prNumber, labels);
   }
 
   async listOpenPrs(projectId: string) {

@@ -131,9 +131,10 @@ describe("finalizeCommit", () => {
 
   it("dedups against existing commit markers (±3) and posts one summary", async () => {
     const { calls } = installFetch((url, init) => {
+      if (url.endsWith("/user")) return { json: { id: 42 } };
       if (!init?.method) {
         // existing comments on the commit: a finding near a.ts:2 (within ±3)
-        return { json: [{ body: "<!-- ct:f:a.ts:4 -->\nold finding" }] };
+        return { json: [{ user: { id: 42 }, body: "<!-- ct:f:a.ts:4 -->\nold finding" }] };
       }
       return { json: {} };
     });
@@ -154,7 +155,11 @@ describe("finalizeCommit", () => {
 
   it("doesn't repost the summary when the commit already has one", async () => {
     const { calls } = installFetch((url, init) =>
-      !init?.method ? { json: [{ body: "<!-- ct:review -->\nseen" }] } : { json: {} },
+      url.endsWith("/user")
+        ? { json: { id: 42 } }
+        : !init?.method
+          ? { json: [{ user: { id: 42 }, body: "<!-- ct:review -->\nseen" }] }
+          : { json: {} },
     );
     await finalizeCommit("github", "o/r", "feat", "sha1", diffs, result, []);
     expect(calls.filter((c) => c.init?.method === "POST")).toHaveLength(0);

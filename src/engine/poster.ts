@@ -113,7 +113,7 @@ export async function finalize(
   // review (MCP can't edit reviews, so each submit is a new conversation
   // entry) — the recheck note below covers it instead.
   if (posted > 0 || !isReReview) {
-    if (await gl.submitReview(projectId, prNumber, summary)) {
+    if (await gl.submitReview(projectId, prNumber, summary, refs)) {
       await gl.editNote(
         projectId,
         prNumber,
@@ -173,6 +173,7 @@ export async function finalizeCommit(
   result: ReviewResult,
   kept: Finding[],
   log: (msg: string) => void = () => {},
+  beforeWrite?: () => Promise<void>,
 ): Promise<void> {
   const botName = reviewerSettings().botName;
   const botEmoji = botName.toLowerCase().includes("turtle") ? "🐢" : "🤖";
@@ -188,17 +189,19 @@ export async function finalizeCommit(
   for (const f of kept) {
     if (alreadyPosted(f.file, f.line)) continue;
     posted++;
+    await beforeWrite?.();
     const ok = await postCommitComment(forge, projectId, headSha, commentBody(f, botName), {
       path: f.file,
       line: f.line,
       patch: patchByFile.get(f.file) ?? "",
     });
     if (!ok) {
+      await beforeWrite?.();
       await postCommitComment(
         forge,
         projectId,
         headSha,
-        `_(couldn't anchor inline — ${f.file}:${f.line})_\n\n${commentBody(f, botName)}`,
+        `_(couldn't anchor inline — ${markdownText(f.file)}:${f.line})_\n\n${commentBody(f, botName)}`,
       );
     }
   }
@@ -225,6 +228,7 @@ export async function finalizeCommit(
         `## ${botEmoji} ${botName} — push to \`${branch}\`\n\n` +
         `✅ No issues found above the confidence threshold.`;
     }
+    await beforeWrite?.();
     await postCommitComment(forge, projectId, headSha, `${REVIEW_MARKER}\n${summary}`);
   }
 

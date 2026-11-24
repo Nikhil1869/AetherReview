@@ -88,9 +88,11 @@ describe("compareDiffs", () => {
 describe("listCommitCommentBodies", () => {
   it("reads GitHub bodies and GitLab notes", async () => {
     installFetch((url) =>
-      new URL(String(url)).hostname === "api.github.com"
-        ? { json: [{ body: "gh comment" }] }
-        : { json: [{ note: "gl comment" }] },
+      url.endsWith("/user")
+        ? { json: { id: 42 } }
+        : new URL(String(url)).hostname === "api.github.com"
+          ? { json: [{ user: { id: 42 }, body: "gh comment" }] }
+          : { json: [{ author: { id: 42 }, note: "gl comment" }] },
     );
     expect(await listCommitCommentBodies("github", "o/r", "sha")).toEqual(["gh comment"]);
     expect(await listCommitCommentBodies("gitlab", "g/p", "sha")).toEqual(["gl comment"]);

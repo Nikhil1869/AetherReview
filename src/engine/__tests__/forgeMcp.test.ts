@@ -119,9 +119,11 @@ describe("GitHubMcpClient", () => {
 
   it("listNotes goes through REST and merges issue + review comments", async () => {
     installFetch((url) =>
-      url.includes("/issues/")
-        ? { json: [{ id: 1, body: "c1" }] }
-        : { json: [{ id: 2, body: "c2" }] },
+      url.endsWith("/user")
+        ? { json: { id: 42 } }
+        : url.includes("/issues/")
+          ? { json: [{ id: 1, user: { id: 42 }, body: "c1" }] }
+          : { json: [{ id: 2, user: { id: 42 }, body: "c2" }] },
     );
     const notes = await new GitHubMcpClient().listNotes("o/r", 1);
     expect(notes.map((n) => n.body)).toEqual(expect.arrayContaining(["c1", "c2"]));
@@ -130,7 +132,11 @@ describe("GitHubMcpClient", () => {
 
   it("postStatus posts a sticky comment via REST, editable on completion", async () => {
     const { calls } = installFetch((url, init) =>
-      init?.method === "POST" ? { json: { id: 42 } } : { json: [] },
+      url.endsWith("/user")
+        ? { json: { id: 42 } }
+        : init?.method === "POST"
+          ? { json: { id: 42 } }
+          : { json: [] },
     );
     const c = new GitHubMcpClient();
     const id = await c.postStatus("o/r", 1, "reviewing…");
@@ -142,51 +148,90 @@ describe("GitHubMcpClient", () => {
   });
 
   it("reuses a leftover pending review instead of dropping inline comments", async () => {
-    mh.handler = (name, args) => {
-      if (name === "pull_request_review_write" && args.method === "create") {
-        return { text: "a pending review already exists", content: null, isError: true };
-      }
-      if (name === "pull_request_read" && args.method === "get_reviews") {
-        return {
-          text: JSON.stringify([{ id: 9, state: "PENDING" }]),
-          content: null,
-          isError: false,
-        };
-      }
-      return { text: "{}", content: null, isError: false };
-    };
+    mh.handler = () => ({ text: "{}", content: null, isError: false });
+    installFetch((url) =>
+      url.endsWith("/user")
+        ? { json: { id: 42 } }
+        : url.includes("/comments?")
+          ? {
+              json: [
+                {
+                  user: { id: 42 },
+                  commit_id: "h",
+                  path: "b.ts",
+                  line: 1,
+                  body: "<!-- ct:f:b.ts:1 -->\nprior",
+                },
+              ],
+            }
+          : { json: [{ id: 9, user: { id: 42 }, state: "PENDING", commit_id: "h" }] },
+    );
     const ok = await new GitHubMcpClient().postInlineNote("o/r", 1, "a.ts", 5, "b", refs);
     expect(ok).toBe(true);
-    expect(mh.calls.some((x) => x.name === "add_comment_to_pending_review")).toBe(true);
+    expect(mh.calls.map((c) => c.name)).toEqual(["add_comment_to_pending_review"]);
   });
 
-  it("addLabels merges with existing labels", async () => {
-    mh.handler = (name) =>
-      name === "issue_read"
-        ? {
-            text: JSON.stringify({ labels: [{ name: "existing" }] }),
-            content: null,
-            isError: false,
-          }
-        : { text: "{}", content: null, isError: false };
+  it.each(["manual", "old head", "mixed comments", "unknown author"])(
+    "refuses to submit an unverified pending draft: %s",
+    async (variant) => {
+      installFetch((url) =>
+        url.endsWith("/user")
+          ? { json: { id: 42 } }
+          : url.includes("/comments?")
+            ? {
+                json:
+                  variant === "manual"
+                    ? []
+                    : [
+                        {
+                          user: { id: variant === "unknown author" ? 7 : 42 },
+                          commit_id: "h",
+                          path: "a.ts",
+                          line: 1,
+                          body:
+                            variant === "mixed comments"
+                              ? "my private draft"
+                              : "<!-- ct:f:a.ts:1 -->",
+                        },
+                      ],
+              }
+            : {
+                json: [
+                  {
+                    id: 9,
+                    user: { id: 42 },
+                    state: "PENDING",
+                    commit_id: variant === "old head" ? "old" : "h",
+                  },
+                ],
+              },
+      );
+      await expect(new GitHubMcpClient().submitReview("o/r", 1, "summary", refs)).rejects.toThrow(
+        /pending review/i,
+      );
+      expect(mh.calls).toHaveLength(0);
+    },
+  );
+
+  it("adds only the requested labels", async () => {
+    const { calls } = installFetch(() => ({ json: {} }));
     await new GitHubMcpClient().addLabels("o/r", 1, ["aether-review/critical"]);
-    const write = mh.calls.find((c) => c.name === "issue_write");
-    expect(write?.args.labels).toEqual(
-      expect.arrayContaining(["existing", "aether-review/critical"]),
-    );
+    expect(JSON.parse(String(calls[0].init?.body))).toEqual({ labels: ["aether-review/critical"] });
   });
 
-  it("submitReview with no pending review creates one when none has the marker", async () => {
-    mh.handler = (name, args) => {
-      if (name === "pull_request_read" && args.method === "get_reviews") {
-        return { text: "[]", content: null, isError: false };
-      }
-      return { text: "{}", content: null, isError: false }; // create
-    };
-    expect(await new GitHubMcpClient().submitReview("o/r", 1, "summary")).toBe(true);
-    expect(
-      mh.calls.some((c) => c.name === "pull_request_review_write" && c.args.method === "create"),
-    ).toBe(true);
+  it("pins a fresh summary to the reviewed SHA and ignores other authors", async () => {
+    mh.handler = () => ({ text: "{}", content: null, isError: false });
+    installFetch((url) =>
+      url.endsWith("/user")
+        ? { json: { id: 42 } }
+        : {
+            json: [
+              { user: { id: 77 }, state: "COMMENTED", commit_id: "h", body: "<!-- ct:review -->" },
+            ],
+          },
+    );
+    expect(await new GitHubMcpClient().submitReview("o/r", 1, "summary", refs)).toBe(true);
+    expect(mh.calls[0].args).toMatchObject({ method: "create", commitID: "h" });
   });
 
   it("listOpenPrs maps open pull requests", async () => {

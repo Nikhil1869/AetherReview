@@ -112,6 +112,7 @@ export interface DiffRefs {
 }
 
 export interface MrInfo {
+  sourceProjectId?: string;
   sourceBranch: string;
   targetBranch: string;
   headSha: string;

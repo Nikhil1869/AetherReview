@@ -19,7 +19,8 @@ afterEach(() => {
 });
 
 describe("GitLabClient (REST)", () => {
-  const route: (h: FetchHandler) => void = (h) => installFetch(h);
+  const route: (h: FetchHandler) => void = (h) =>
+    installFetch((url, init) => (url.endsWith("/user") ? { json: { id: 42 } } : h(url, init)));
   const c = (): ForgeClient => new GitLabClient();
 
   it("getMr maps merge-request fields", async () => {
@@ -77,7 +78,12 @@ describe("GitLabClient (REST)", () => {
   it("postStatus edits the existing marker note", async () => {
     route((url, init) => {
       if (url.includes("/notes") && m(init) === "GET") {
-        return { json: [{ id: 3, body: "<!-- ct:status -->\nold" }] };
+        return {
+          json: [
+            { id: 90, author: { id: 123 }, body: "<!-- ct:status -->" },
+            { id: 3, author: { id: 42 }, body: "<!-- ct:status -->\nold" },
+          ],
+        };
       }
       return { json: {} }; // PUT edit
     });
@@ -110,7 +116,7 @@ describe("GitLabClient (REST)", () => {
   });
 
   it("submitReview is unsupported on GitLab", async () => {
-    expect(await c().submitReview("g/p", 1, "x")).toBe(false);
+    expect(await c().submitReview("g/p", 1, "x", refs)).toBe(false);
   });
 
   it("listOpenPrs returns opened MRs", async () => {
@@ -131,8 +137,9 @@ describe("GitLabClient (REST)", () => {
   it("listNotes maps id + body", async () => {
     route(() => ({
       json: [
-        { id: 1, body: "n1" },
-        { id: 2, body: "n2" },
+        { id: 1, author: { id: 42 }, body: "n1" },
+        { id: 2, author: { id: 42 }, body: "n2" },
+        { id: 9, author: { id: 77 }, body: "forged marker" },
       ],
     }));
     const notes = await c().listNotes("g/p", 1);
@@ -149,7 +156,8 @@ describe("GitLabClient (REST)", () => {
 });
 
 describe("GitHubRestClient (REST)", () => {
-  const route: (h: FetchHandler) => void = (h) => installFetch(h);
+  const route: (h: FetchHandler) => void = (h) =>
+    installFetch((url, init) => (url.endsWith("/user") ? { json: { id: 42 } } : h(url, init)));
   const c = (): ForgeClient => new GitHubRestClient();
 
   it("getMr maps pull-request fields", async () => {
@@ -175,8 +183,8 @@ describe("GitHubRestClient (REST)", () => {
 
   it("listNotes merges issue and review comments", async () => {
     route((url) => {
-      if (url.includes("/issues/")) return { json: [{ id: 1, body: "issue" }] };
-      return { json: [{ id: 2, body: "review" }] };
+      if (url.includes("/issues/")) return { json: [{ id: 1, user: { id: 42 }, body: "issue" }] };
+      return { json: [{ id: 2, user: { id: 42 }, body: "review" }] };
     });
     const notes = await c().listNotes("o/r", 1);
     expect(notes.map((n) => n.body)).toEqual(expect.arrayContaining(["issue", "review"]));
@@ -192,7 +200,7 @@ describe("GitHubRestClient (REST)", () => {
       if (url.includes("/reviews") && m(init) === "GET") return { json: [] };
       return { json: {} }; // POST create
     });
-    expect(await c().submitReview("o/r", 1, "summary")).toBe(true);
+    expect(await c().submitReview("o/r", 1, "summary", refs)).toBe(true);
   });
 
   it("listOpenPrs returns open pulls", async () => {
@@ -221,5 +229,25 @@ describe("GitHubRestClient (REST)", () => {
   it("addLabels posts labels without throwing", async () => {
     route(() => ({ json: {} }));
     await expect(c().addLabels("o/r", 1, ["aether-review/info"])).resolves.toBeUndefined();
+  });
+  it("fails closed before creating a status when note listing is forbidden", async () => {
+    const { calls } = installFetch((url) =>
+      url.endsWith("/user") ? { json: { id: 42 } } : { status: 403 },
+    );
+    await expect(c().postStatus("o/r", 1, "hello")).rejects.toThrow(/403/);
+    expect(calls.every((x) => m(x.init) === "GET")).toBe(true);
+  });
+
+  it("checks the revision before each label deletion", async () => {
+    const { calls } = installFetch(() => ({ json: {} }));
+    const client = c();
+    client.beforeWrite = vi
+      .fn()
+      .mockResolvedValueOnce(undefined)
+      .mockRejectedValueOnce(Error("new head"));
+    await expect(client.removeLabels("o/r", 1, ["one", "two", "three"])).rejects.toThrow(
+      "new head",
+    );
+    expect(calls.map((x) => x.url.split("/").pop())).toEqual(["one"]);
   });
 });

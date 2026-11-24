@@ -1,6 +1,7 @@
 /** Forge clients. GitHub default backend is MCP (see forgeMcp.ts); REST
  * clients here cover GitLab and the GITHUB_BACKEND=rest escape hatch. */
 
+import { ForgeSession } from "./forgeSession.js";
 import { gitlabUrl, resolveToken } from "./config.js";
 import type { DiffRefs, FileDiff, MrInfo } from "./types.js";
 
@@ -37,6 +38,7 @@ export async function readDiffPages<T>(
 }
 
 export interface ForgeClient {
+  beforeWrite?: () => Promise<void>;
   close(): Promise<void>;
   getMr(projectId: string, prNumber: number): Promise<MrInfo>;
   getDiffs(projectId: string, prNumber: number): Promise<FileDiff[]>;
@@ -62,15 +64,8 @@ export interface ForgeClient {
   ): Promise<boolean>;
   addLabels(projectId: string, prNumber: number, labels: string[]): Promise<void>;
   removeLabels(projectId: string, prNumber: number, labels: string[]): Promise<void>;
-  submitReview(projectId: string, prNumber: number, body: string): Promise<boolean>;
+  submitReview(projectId: string, prNumber: number, body: string, refs: DiffRefs): Promise<boolean>;
   listOpenPrs(projectId: string): Promise<{ iid: number; headSha: string }[]>;
-}
-
-async function http(
-  url: string,
-  init: RequestInit & { headers: Record<string, string> },
-): Promise<Response> {
-  return fetch(url, { ...init, redirect: "error", signal: AbortSignal.timeout(30000) });
 }
 
 // ---- GitLab (REST) -------------------------------------------------------------
@@ -79,9 +74,16 @@ export class GitLabClient implements ForgeClient {
   private base: string;
   private headers: Record<string, string>;
 
+  readonly session: ForgeSession;
+  set beforeWrite(guard: () => Promise<void>) {
+    this.session.beforeWrite = guard;
+  }
+
   constructor() {
     this.base = `${gitlabUrl()}/api/v4`;
-    this.headers = { "PRIVATE-TOKEN": resolveToken("gitlab") ?? "" };
+    const token = resolveToken("gitlab");
+    this.headers = token ? { "PRIVATE-TOKEN": token } : {};
+    this.session = new ForgeSession(this.base, this.headers, false);
   }
 
   async close() {}
@@ -91,13 +93,16 @@ export class GitLabClient implements ForgeClient {
   }
 
   async getMr(projectId: string, prNumber: number): Promise<MrInfo> {
-    const r = await http(
+    const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}`,
       { headers: this.headers },
     );
     if (!r.ok) throw new Error(`gitlab get_mr ${r.status}`);
     const d = (await r.json()) as any;
     return {
+      sourceProjectId: Number.isSafeInteger(d.source_project_id)
+        ? String(d.source_project_id)
+        : undefined,
       sourceBranch: d.source_branch,
       targetBranch: d.target_branch,
       headSha: d.sha ?? d.diff_refs?.head_sha ?? "",
@@ -110,7 +115,7 @@ export class GitLabClient implements ForgeClient {
 
   async getDiffs(projectId: string, prNumber: number): Promise<FileDiff[]> {
     const items = await readDiffPages(async (page) => {
-      const r = await http(
+      const r = await this.session.request(
         `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}/diffs?per_page=100&page=${page}`,
         { headers: this.headers },
       );
@@ -130,7 +135,7 @@ export class GitLabClient implements ForgeClient {
   }
 
   async getFile(projectId: string, path: string, ref: string): Promise<string | null> {
-    const r = await http(
+    const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/repository/files/${encodeURIComponent(path)}/raw?ref=${encodeURIComponent(ref)}`,
       { headers: this.headers },
     );
@@ -138,7 +143,7 @@ export class GitLabClient implements ForgeClient {
   }
 
   async searchBlobs(projectId: string, query: string, ref: string) {
-    const r = await http(
+    const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/search?scope=blobs&search=${encodeURIComponent(query)}&ref=${encodeURIComponent(ref)}&per_page=20`,
       { headers: this.headers },
     );
@@ -147,7 +152,7 @@ export class GitLabClient implements ForgeClient {
   }
 
   async createNote(projectId: string, prNumber: number, body: string) {
-    const r = await http(
+    const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}/notes`,
       {
         method: "POST",
@@ -160,7 +165,7 @@ export class GitLabClient implements ForgeClient {
   }
 
   async editNote(projectId: string, prNumber: number, noteId: number | string, body: string) {
-    const r = await http(
+    const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}/notes/${noteId}`,
       {
         method: "PUT",
@@ -172,18 +177,19 @@ export class GitLabClient implements ForgeClient {
   }
 
   async listNotes(projectId: string, prNumber: number): Promise<Note[]> {
-    const r = await http(
-      `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}/notes?per_page=100`,
-      { headers: this.headers },
+    const actor = await this.session.actorId();
+    const notes = await this.session.pages(
+      `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}/notes`,
     );
-    if (!r.ok) return [];
-    return ((await r.json()) as any[]).map((n) => ({ id: n.id, body: n.body ?? "" }));
+    return notes
+      .filter((n) => n.author?.id === actor)
+      .map((n) => ({ id: n.id ?? null, body: n.body ?? "" }));
   }
 
   async postStatus(projectId: string, prNumber: number, body: string) {
     const full = `${STATUS_MARKER}\n${body}`;
     for (const note of await this.listNotes(projectId, prNumber)) {
-      if (note.body.includes(STATUS_MARKER) && note.id != null) {
+      if (note.body.split("\n", 1)[0] === STATUS_MARKER && note.id != null) {
         await this.editNote(projectId, prNumber, note.id, full);
         return note.id;
       }
@@ -210,7 +216,7 @@ export class GitLabClient implements ForgeClient {
       "position[old_path]": oldPath,
       "position[new_line]": String(newLine),
     });
-    const r = await http(
+    const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}/discussions`,
       {
         method: "POST",
@@ -218,23 +224,33 @@ export class GitLabClient implements ForgeClient {
         body: params.toString(),
       },
     );
+    if (!r.ok && r.status !== 422 && r.status !== 400)
+      throw Error("Inline publication failed (HTTP " + r.status + ").");
     return r.ok;
   }
 
   async addLabels(projectId: string, prNumber: number, labels: string[]) {
-    await http(`${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}`, {
-      method: "PUT",
-      headers: { ...this.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ add_labels: labels.join(",") }),
-    });
+    const response = await this.session.request(
+      `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}`,
+      {
+        method: "PUT",
+        headers: { ...this.headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ add_labels: labels.join(",") }),
+      },
+    );
+    if (!response.ok) throw Error("Could not update labels (HTTP " + response.status + ").");
   }
 
   async removeLabels(projectId: string, prNumber: number, labels: string[]) {
-    await http(`${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}`, {
-      method: "PUT",
-      headers: { ...this.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ remove_labels: labels.join(",") }),
-    });
+    const response = await this.session.request(
+      `${this.base}/projects/${this.enc(projectId)}/merge_requests/${prNumber}`,
+      {
+        method: "PUT",
+        headers: { ...this.headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ remove_labels: labels.join(",") }),
+      },
+    );
+    if (!response.ok) throw Error("Could not update labels (HTTP " + response.status + ").");
   }
 
   async submitReview() {
@@ -242,7 +258,7 @@ export class GitLabClient implements ForgeClient {
   }
 
   async listOpenPrs(projectId: string) {
-    const r = await http(
+    const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/merge_requests?state=opened&per_page=100`,
       { headers: this.headers },
     );
@@ -259,23 +275,30 @@ export class GitHubRestClient implements ForgeClient {
   private base = process.env.GITHUB_URL ?? "https://api.github.com";
   private headers: Record<string, string>;
 
-  constructor() {
+  readonly session: ForgeSession;
+  set beforeWrite(guard: () => Promise<void>) {
+    this.session.beforeWrite = guard;
+  }
+
+  constructor(token = resolveToken("github")) {
     this.headers = {
-      Authorization: `Bearer ${resolveToken("github") ?? ""}`,
+      ...(token ? { Authorization: `Bearer ${token}` } : {}),
       Accept: "application/vnd.github+json",
       "X-GitHub-Api-Version": "2022-11-28",
     };
+    this.session = new ForgeSession(this.base, this.headers, true);
   }
 
   async close() {}
 
   async getMr(projectId: string, prNumber: number): Promise<MrInfo> {
-    const r = await http(`${this.base}/repos/${projectId}/pulls/${prNumber}`, {
+    const r = await this.session.request(`${this.base}/repos/${projectId}/pulls/${prNumber}`, {
       headers: this.headers,
     });
     if (!r.ok) throw new Error(`github get_mr ${r.status}`);
     const d = (await r.json()) as any;
     return {
+      sourceProjectId: d.head.repo?.full_name,
       sourceBranch: d.head.ref,
       targetBranch: d.base.ref,
       headSha: d.head.sha,
@@ -286,7 +309,7 @@ export class GitHubRestClient implements ForgeClient {
 
   async getDiffs(projectId: string, prNumber: number): Promise<FileDiff[]> {
     const items = await readDiffPages(async (page) => {
-      const r = await http(
+      const r = await this.session.request(
         `${this.base}/repos/${projectId}/pulls/${prNumber}/files?per_page=100&page=${page}`,
         {
           headers: this.headers,
@@ -309,7 +332,7 @@ export class GitHubRestClient implements ForgeClient {
     const segments = path.split("/");
     if (segments.some((part) => !part || part === "." || part === "..")) return null;
     const encoded = segments.map(encodeURIComponent).join("/");
-    const r = await http(
+    const r = await this.session.request(
       `${this.base}/repos/${projectId}/contents/${encoded}?ref=${encodeURIComponent(ref)}`,
       { headers: { ...this.headers, Accept: "application/vnd.github.raw" } },
     );
@@ -317,7 +340,7 @@ export class GitHubRestClient implements ForgeClient {
   }
 
   async searchBlobs(projectId: string, query: string) {
-    const r = await http(
+    const r = await this.session.request(
       `${this.base}/search/code?q=${encodeURIComponent(`${query} repo:${projectId}`)}`,
       { headers: this.headers },
     );
@@ -327,41 +350,72 @@ export class GitHubRestClient implements ForgeClient {
   }
 
   async createNote(projectId: string, prNumber: number, body: string) {
-    const r = await http(`${this.base}/repos/${projectId}/issues/${prNumber}/comments`, {
-      method: "POST",
-      headers: { ...this.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
-    });
+    const r = await this.session.request(
+      `${this.base}/repos/${projectId}/issues/${prNumber}/comments`,
+      {
+        method: "POST",
+        headers: { ...this.headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      },
+    );
     if (!r.ok) throw new Error(`github create_note ${r.status}`);
     return ((await r.json()) as any).id as number;
   }
 
   async editNote(projectId: string, prNumber: number, noteId: number | string, body: string) {
-    const r = await http(`${this.base}/repos/${projectId}/issues/comments/${noteId}`, {
-      method: "PATCH",
-      headers: { ...this.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ body }),
-    });
+    const r = await this.session.request(
+      `${this.base}/repos/${projectId}/issues/comments/${noteId}`,
+      {
+        method: "PATCH",
+        headers: { ...this.headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ body }),
+      },
+    );
     if (!r.ok) throw new Error(`github edit_note ${r.status}`);
   }
 
   async listNotes(projectId: string, prNumber: number): Promise<Note[]> {
-    const out: Note[] = [];
-    for (const url of [
-      `${this.base}/repos/${projectId}/issues/${prNumber}/comments?per_page=100`,
-      `${this.base}/repos/${projectId}/pulls/${prNumber}/comments?per_page=100`,
-    ]) {
-      const r = await http(url, { headers: this.headers });
-      if (r.ok)
-        for (const c of (await r.json()) as any[]) out.push({ id: c.id, body: c.body ?? "" });
-    }
-    return out;
+    const actor = await this.session.actorId();
+    const root = this.base + "/repos/" + projectId;
+    const [issues, inline] = await Promise.all([
+      this.session.pages(root + "/issues/" + prNumber + "/comments"),
+      this.session.pages(root + "/pulls/" + prNumber + "/comments"),
+    ]);
+    // Inline IDs belong to a different endpoint and cannot be edited as issue comments.
+    return [
+      ...issues
+        .filter((c) => c.user?.id === actor)
+        .map((c) => ({ id: c.id ?? null, body: c.body ?? "" })),
+      ...inline.filter((c) => c.user?.id === actor).map((c) => ({ id: null, body: c.body ?? "" })),
+    ];
+  }
+
+  async ownedReviews(projectId: string, prNumber: number) {
+    const actor = await this.session.actorId();
+    return (
+      await this.session.pages(
+        this.base + "/repos/" + projectId + "/pulls/" + prNumber + "/reviews",
+      )
+    ).filter((r) => r.user?.id === actor);
+  }
+
+  async draftComments(projectId: string, prNumber: number, reviewId: number) {
+    return this.session.pages(
+      this.base +
+        "/repos/" +
+        projectId +
+        "/pulls/" +
+        prNumber +
+        "/reviews/" +
+        reviewId +
+        "/comments",
+    );
   }
 
   async postStatus(projectId: string, prNumber: number, body: string) {
     const full = `${STATUS_MARKER}\n${body}`;
     for (const note of await this.listNotes(projectId, prNumber)) {
-      if (note.body.includes(STATUS_MARKER) && note.id != null) {
+      if (note.body.split("\n", 1)[0] === STATUS_MARKER && note.id != null) {
         await this.editNote(projectId, prNumber, note.id, full);
         return note.id;
       }
@@ -377,71 +431,94 @@ export class GitHubRestClient implements ForgeClient {
     body: string,
     refs: DiffRefs,
   ): Promise<boolean> {
-    const r = await http(`${this.base}/repos/${projectId}/pulls/${prNumber}/comments`, {
-      method: "POST",
-      headers: { ...this.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({
-        body,
-        commit_id: refs.head_sha,
-        path: filePath,
-        line: newLine,
-        side: "RIGHT",
-      }),
-    });
+    const r = await this.session.request(
+      `${this.base}/repos/${projectId}/pulls/${prNumber}/comments`,
+      {
+        method: "POST",
+        headers: { ...this.headers, "Content-Type": "application/json" },
+        body: JSON.stringify({
+          body,
+          commit_id: refs.head_sha,
+          path: filePath,
+          line: newLine,
+          side: "RIGHT",
+        }),
+      },
+    );
+    if (!r.ok && r.status !== 422 && r.status !== 400)
+      throw Error("Inline publication failed (HTTP " + r.status + ").");
     return r.ok;
   }
 
   async addLabels(projectId: string, prNumber: number, labels: string[]) {
-    await http(`${this.base}/repos/${projectId}/issues/${prNumber}/labels`, {
-      method: "POST",
-      headers: { ...this.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ labels }),
-    });
+    const response = await this.session.request(
+      `${this.base}/repos/${projectId}/issues/${prNumber}/labels`,
+      {
+        method: "POST",
+        headers: { ...this.headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ labels }),
+      },
+    );
+    if (!response.ok) throw Error("Could not add labels (HTTP " + response.status + ").");
   }
 
   async removeLabels(projectId: string, prNumber: number, labels: string[]) {
     // 404 per label (not present) is fine — removal is best-effort
     for (const l of labels) {
-      await http(
+      const r = await this.session.request(
         `${this.base}/repos/${projectId}/issues/${prNumber}/labels/${encodeURIComponent(l)}`,
         { method: "DELETE", headers: this.headers },
       );
+      if (!r.ok && r.status !== 404)
+        throw Error("Could not remove a label (HTTP " + r.status + ").");
     }
   }
 
-  async submitReview(projectId: string, prNumber: number, body: string): Promise<boolean> {
+  async submitReview(
+    projectId: string,
+    prNumber: number,
+    body: string,
+    refs: DiffRefs,
+  ): Promise<boolean> {
     const full = `${REVIEW_MARKER}\n${body}`;
-    const list = await http(
-      `${this.base}/repos/${projectId}/pulls/${prNumber}/reviews?per_page=100`,
-      { headers: this.headers },
-    );
-    if (list.ok) {
-      for (const rv of (await list.json()) as any[]) {
-        if ((rv.body ?? "").includes(REVIEW_MARKER)) {
-          const upd = await http(
-            `${this.base}/repos/${projectId}/pulls/${prNumber}/reviews/${rv.id}`,
-            {
-              method: "PUT",
-              headers: { ...this.headers, "Content-Type": "application/json" },
-              body: JSON.stringify({ body: full }),
-            },
-          );
-          if (upd.ok) return true;
-        }
+    for (const rv of await this.ownedReviews(projectId, prNumber)) {
+      if (
+        typeof rv.id === "number" &&
+        rv.commit_id === refs.head_sha &&
+        rv.state !== "PENDING" &&
+        rv.body?.split("\n", 1)[0] === REVIEW_MARKER
+      ) {
+        const upd = await this.session.request(
+          `${this.base}/repos/${projectId}/pulls/${prNumber}/reviews/${rv.id}`,
+          {
+            method: "PUT",
+            headers: { ...this.headers, "Content-Type": "application/json" },
+            body: JSON.stringify({ body: full }),
+          },
+        );
+        if (!upd.ok) throw Error("Could not update the existing review (HTTP " + upd.status + ").");
+        return true;
       }
     }
-    const r = await http(`${this.base}/repos/${projectId}/pulls/${prNumber}/reviews`, {
-      method: "POST",
-      headers: { ...this.headers, "Content-Type": "application/json" },
-      body: JSON.stringify({ body: full, event: "COMMENT" }),
-    });
-    return r.ok;
+    const r = await this.session.request(
+      `${this.base}/repos/${projectId}/pulls/${prNumber}/reviews`,
+      {
+        method: "POST",
+        headers: { ...this.headers, "Content-Type": "application/json" },
+        body: JSON.stringify({ body: full, event: "COMMENT", commit_id: refs.head_sha }),
+      },
+    );
+    if (!r.ok) throw Error("Could not submit the review (HTTP " + r.status + ").");
+    return true;
   }
 
   async listOpenPrs(projectId: string) {
-    const r = await http(`${this.base}/repos/${projectId}/pulls?state=open&per_page=100`, {
-      headers: this.headers,
-    });
+    const r = await this.session.request(
+      `${this.base}/repos/${projectId}/pulls?state=open&per_page=100`,
+      {
+        headers: this.headers,
+      },
+    );
     if (!r.ok) return [];
     return ((await r.json()) as any[])
       .filter((pr) => pr && (pr.state === "open" || !pr.state))
@@ -451,14 +528,19 @@ export class GitHubRestClient implements ForgeClient {
 
 // ---- factory ---------------------------------------------------------------------
 
-export async function getForgeClient(forge: string): Promise<ForgeClient> {
+export async function getForgeClient(forge: string, readOnly = true): Promise<ForgeClient> {
   if (forge === "github") {
     // oauth tokens may have expired — refresh before either client reads it.
     const { ensureFreshGithubToken } = await import("./githubAuth.js");
     await ensureFreshGithubToken();
-    if ((process.env.GITHUB_BACKEND ?? "mcp").toLowerCase() !== "rest") {
+    if (
+      URL.parse(process.env.GITHUB_URL ?? "https://api.github.com")?.origin ===
+        "https://api.github.com" &&
+      resolveToken("github") &&
+      (process.env.GITHUB_BACKEND ?? "mcp").toLowerCase() !== "rest"
+    ) {
       const { GitHubMcpClient } = await import("./forgeMcp.js");
-      return new GitHubMcpClient();
+      return new GitHubMcpClient(readOnly);
     }
     return new GitHubRestClient();
   }
