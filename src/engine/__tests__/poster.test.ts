@@ -27,6 +27,24 @@ describe("finalize — recheck note", () => {
   const clean: ReviewResult = { findings: [], summary: "all good" };
   const oldMarkerNote = { id: 1, body: "<!-- ct:f:a.ts:2 -->\nold finding" };
 
+  it("ignores markers quoted inside an owned finding but preserves legacy fallback markers", async () => {
+    const gl = makeFakeForge({
+      notes: [
+        { id: 1, body: "<!-- ct:f:other.ts:2 -->\nSuggested code\n<!-- ct:f:a.ts:2 -->" },
+        { id: 2, body: "_(couldn't anchor inline — b.ts:5)_\n\n<!-- ct:f:b.ts:5 -->\nprior" },
+      ],
+    });
+    await finalize(
+      gl,
+      "o/r",
+      1,
+      refs,
+      { summary: "ok", findings: [] },
+      [finding(2), { ...finding(5), file: "b.ts" }],
+      99,
+    );
+    expect(gl.inline.map((n) => n.filePath)).toEqual(["a.ts"]);
+  });
   it("posts 'no issues found' on a clean re-review", async () => {
     const gl = makeFakeForge({ notes: [oldMarkerNote] });
     const statusId = await gl.postStatus("o/r", 1, "reviewing");

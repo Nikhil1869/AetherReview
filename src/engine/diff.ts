@@ -1,3 +1,4 @@
+import { sensitivePath, sensitiveText } from "./sensitiveSource.js";
 import type { FileDiff } from "./types.js";
 
 const HUNK = /^@@ -\d+(?:,(\d+))? \+(\d+)(?:,(\d+))? @@/;
@@ -43,6 +44,8 @@ export function reviewDiff(diffs: FileDiff[], maxChars: number) {
   const parts: string[] = [];
   let total = 0;
   for (const file of diffs) {
+    if (sensitivePath(file.newPath) || sensitivePath(file.oldPath) || sensitiveText(file.diff))
+      continue;
     if (!/^@@ -\d/m.test(file.diff) || file.diff.includes("\0")) continue;
     const chunk = `### FILE: ${file.newPath || file.oldPath}\n${file.diff}\n`;
     if (total + chunk.length > maxChars) continue;
