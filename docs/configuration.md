@@ -269,3 +269,5 @@ code.** This is a hard security invariant — see
 ---
 
 [← Docs index](./README.md) · Next: [Hard Invariants](./invariants.md)
+
+Set `REVIEWER_TIMEOUT_MS` to an integer from 1000 through 600000 to override the per-request model deadline. The default is 180000 for loopback inference and 60000 for a hosted endpoint.

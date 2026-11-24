@@ -1,5 +1,14 @@
 import { expect, it } from "vitest";
-import { readSourceBody, MAX_SOURCE_BYTES } from "../sourceBody.js";
+import { readPolicy, readSourceBody, MAX_SOURCE_BYTES } from "../sourceBody.js";
+
+it("distinguishes absent publication policy from inaccessible base contents", async () => {
+  const absent = () => new Response(null, { status: 404 });
+  await expect(readPolicy(absent(), async () => absent())).rejects.toThrow("access");
+  expect(await readPolicy(absent(), async () => new Response())).toBeNull();
+  await expect(
+    readPolicy(new Response(null, { status: 403 }), async () => new Response()),
+  ).rejects.toThrow("403");
+});
 
 it("counts bytes across chunks and cancels before consuming an oversized source", async () => {
   let cancelled = false;

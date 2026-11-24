@@ -144,8 +144,11 @@ export async function runReview(
       return skip("nothing to review");
     }
     const sourceProject = mr.sourceProjectId ?? projectId;
-    const norms = await loadNorms(gl, sourceProject, mr, {
+    if (options.publish && !refs.base_sha)
+      throw Error("Missing base revision for publication policy.");
+    const norms = await loadNorms(gl, options.publish ? projectId : sourceProject, mr, {
       forge: job.forge,
+      policyRef: options.publish ? refs.base_sha : undefined,
       diffLines: countAddedLines(diffs),
     });
     const filtered = applyExcludes(diffs, norms);
@@ -239,6 +242,7 @@ export async function runPushReview(
   let gl: ForgeClient | null = null;
   try {
     gl = await getRestForgeClient(forge);
+    if (!baseSha) throw Error("Missing base revision for publication policy.");
     const diffs = await compareDiffs(forge, projectId, baseSha, headSha);
     if (!diffs.length) {
       log(`branch=${branch} nothing to review`);
@@ -253,6 +257,7 @@ export async function runPushReview(
     };
     const norms = await loadNorms(gl, projectId, mrLike, {
       forge,
+      policyRef: baseSha,
       diffLines: countAddedLines(diffs),
     });
     const filtered = applyExcludes(diffs, norms);

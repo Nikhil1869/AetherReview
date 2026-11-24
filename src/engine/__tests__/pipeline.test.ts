@@ -41,6 +41,32 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("runReview", () => {
+  it("reads publication policy at the target base while bundling source from the fork", async () => {
+    const fake = makeFakeForge({ diffs: [diff], mr: { sourceProjectId: "contributor/fork" } });
+    ph.fake = fake;
+    vi.mocked(fake.getFile).mockImplementation(async (project, path, ref) =>
+      project === "contributor/fork" && path === ".aetherreview.yml" && ref === "headsha"
+        ? "max_findings: 0"
+        : null,
+    );
+    vi.mocked(review).mockResolvedValue({ findings: [], summary: "ok" });
+    expect((await runReview(job(), () => {}, { publish: true })).status).toBe("completed");
+    expect(fake.getFile).toHaveBeenCalledWith(job().projectId, ".aetherreview.yml", "basesha");
+    expect(fake.getFile).not.toHaveBeenCalledWith(
+      "contributor/fork",
+      ".aetherreview.yml",
+      "headsha",
+    );
+    const { buildContext } = await import("../bundler.js");
+    expect(buildContext).toHaveBeenCalledWith(
+      fake,
+      "contributor/fork",
+      "headsha",
+      expect.anything(),
+      expect.anything(),
+      expect.anything(),
+    );
+  });
   it("runs end-to-end and posts findings + a summary review", async () => {
     const fake: FakeForge = makeFakeForge({ diffs: [diff] });
     ph.fake = fake;

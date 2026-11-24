@@ -171,6 +171,10 @@ export class GitHubMcpClient implements ForgeClient {
     return (d?.items ?? []).filter((i: any) => i?.path).map((i: any) => ({ path: i.path }));
   }
 
+  async getPolicyFile(projectId: string, ref: string) {
+    return this.rest().getPolicyFile(projectId, ref);
+  }
+
   async listNotes(projectId: string, prNumber: number): Promise<Note[]> {
     // REST sees both issue comments and submitted review comments — the MCP
     // tools miss some, which let already-posted findings repost (broken dedup).

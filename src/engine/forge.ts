@@ -3,7 +3,7 @@
 
 import { ForgeSession } from "./forgeSession.js";
 import { safeSourcePath } from "./sourcePath.js";
-import { readSourceBody } from "./sourceBody.js";
+import { readPolicy, readSourceBody } from "./sourceBody.js";
 import { gitlabUrl, resolveToken } from "./config.js";
 import type { DiffRefs, FileDiff, MrInfo } from "./types.js";
 
@@ -46,6 +46,7 @@ export interface ForgeClient {
   getMr(projectId: string, prNumber: number): Promise<MrInfo>;
   getDiffs(projectId: string, prNumber: number): Promise<FileDiff[]>;
   getFile(projectId: string, path: string, ref: string): Promise<string | null>;
+  getPolicyFile?(projectId: string, ref: string): Promise<string | null>;
   searchBlobs(projectId: string, query: string, ref: string): Promise<{ path: string }[]>;
   createNote(projectId: string, prNumber: number, body: string): Promise<number | string>;
   editNote(
@@ -144,6 +145,21 @@ export class GitLabClient implements ForgeClient {
       { headers: this.headers },
     );
     return readSourceBody(r);
+  }
+
+  async getPolicyFile(projectId: string, ref: string) {
+    const response = await this.session.request(
+      `${this.base}/projects/${this.enc(projectId)}/repository/files/.aetherreview.yml/raw?ref=${encodeURIComponent(ref)}`,
+    );
+    return readPolicy(response, () =>
+      this.session.request(
+        this.base +
+          "/projects/" +
+          this.enc(projectId) +
+          "/repository/commits/" +
+          encodeURIComponent(ref),
+      ),
+    );
   }
 
   async searchBlobs(projectId: string, query: string, ref: string) {
@@ -346,6 +362,18 @@ export class GitHubRestClient implements ForgeClient {
       { headers: { ...this.headers, Accept: "application/vnd.github.raw" } },
     );
     return readSourceBody(r);
+  }
+
+  async getPolicyFile(projectId: string, ref: string) {
+    const response = await this.session.request(
+      `${this.base}/repos/${projectId}/contents/.aetherreview.yml?ref=${encodeURIComponent(ref)}`,
+      { headers: { Accept: "application/vnd.github.raw" } },
+    );
+    return readPolicy(response, () =>
+      this.session.request(
+        this.base + "/repos/" + projectId + "/git/commits/" + encodeURIComponent(ref),
+      ),
+    );
   }
 
   async searchBlobs(projectId: string, query: string) {

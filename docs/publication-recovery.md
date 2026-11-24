@@ -27,3 +27,5 @@ The forge can change between the preflight and the write. A network error can fo
 - Establish independent quality evidence. The historic 3B sample had two correct verdicts in six attempts and four abstentions. Mechanically verified diagnostics, semantic-candidate verification and a separated development/held-out evaluation precede release claims. The requested 90% precision, 85% recall and 90% verdict accuracy remain targets.
 - Triage development dependencies by actual CI exposure. Continue to run the six supported OS/Node combinations and pack/install the generated CLI.
 - Extend language support, indexing, evaluation and the dashboard after the production safety gates. A public release and npm publication require separate maintainer approval.
+
+For publication, the target repository’s policy is read at the pinned base revision. Fork content and context remain pinned to the source head. A missing policy file is accepted only after the adapter verifies base-commit access. A denied read or an unparseable policy stops publication.
