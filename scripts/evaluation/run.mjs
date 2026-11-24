@@ -2,7 +2,7 @@ import process from "node:process";
 import console from "node:console";
 import { URL } from "node:url";
 import { execFileSync, execFile } from "node:child_process";
-import { mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
+import { existsSync, mkdtempSync, mkdirSync, writeFileSync, readFileSync, rmSync } from "node:fs";
 import { tmpdir } from "node:os";
 import { join } from "node:path";
 import { fileURLToPath, pathToFileURL } from "node:url";
@@ -88,23 +88,27 @@ try {
       ["127.0.0.1", "localhost", "[::1]"].includes(new URL(env.REVIEWER_BASE_URL).hostname)
     )
       env.REVIEWER_API_KEY = "local";
+    const readRaw = () =>
+      existsSync(locations) ? JSON.parse(readFileSync(locations, "utf8")) : null;
+    const metrics = (raw) => ({
+      rawFindings: raw?.length ?? null,
+      invalidLocations:
+        raw?.filter((f) => f?.file !== "sample.js" || Number(f?.line) !== 2).length ?? null,
+      raw: process.argv.includes("--diagnose") ? raw : undefined,
+    });
     try {
       const { stdout } = await run(
         process.execPath,
         ["--import", pathToFileURL(capture).href, cli, "review", "--staged", "--json"],
-        { cwd, env, timeout: 100000 },
+        { cwd, env, timeout: 210000 },
       );
       const report = JSON.parse(stdout);
-      const raw = JSON.parse(readFileSync(locations, "utf8"));
       console.log(
         JSON.stringify({
           id,
           expected,
           status: report.status,
-          rawFindings: raw.length,
-          raw: process.argv.includes("--diagnose") ? raw : undefined,
-          invalidLocations: raw.filter((f) => f?.file !== "sample.js" || Number(f?.line) !== 2)
-            .length,
+          ...metrics(readRaw()),
           findings: report.result.findings,
         }),
       );
@@ -114,6 +118,7 @@ try {
           id,
           expected,
           status: "failed",
+          ...metrics(readRaw()),
           message: error.stdout ? JSON.parse(error.stdout).message : "Evaluation failed",
         }),
       );
