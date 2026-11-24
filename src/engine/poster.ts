@@ -21,7 +21,14 @@ const LABEL: Record<Severity, string> = {
 const RANK: Record<Severity, number> = { info: 0, warning: 1, critical: 2 };
 const EMOJI: Record<Severity, string> = { critical: "🛑", warning: "⚠️", info: "💡" };
 
-const MARKER_RE = /<!-- ct:f:(.+?):(\d+) -->/g;
+const MARKER_RE = /^<!-- ct:f:(.+?):(\d+) -->$/gm;
+function artifactHeader(body: string) {
+  const [first, blank, third] = body.split("\n", 3);
+  // Older unanchored findings put their marker below a one-line fallback notice.
+  return /^_\(couldn't anchor inline — .+:\d+\)_$/.test(first) && blank === ""
+    ? (third ?? "")
+    : first;
+}
 const LINE_TOLERANCE = 3;
 
 function commentBody(f: Finding, botName: string): string {
@@ -50,7 +57,9 @@ export async function finalize(
 ): Promise<void> {
   const botName = reviewerSettings().botName;
   const botEmoji = botName.toLowerCase().includes("turtle") ? "🐢" : "🤖";
-  const existing = (await gl.listNotes(projectId, prNumber)).map((n) => n.body).join("\n");
+  const existing = (await gl.listNotes(projectId, prNumber))
+    .map((n) => artifactHeader(n.body))
+    .join("\n");
   const existingMarkers = [...existing.matchAll(MARKER_RE)].map(
     (m) => [m[1], Number(m[2])] as const,
   );
@@ -148,7 +157,7 @@ export async function finalize(
     isReReview &&
     posted === 0 &&
     refs.head_sha &&
-    !existing.includes(recheckMarker(refs.head_sha))
+    !existing.split("\n").includes(recheckMarker(refs.head_sha))
   ) {
     const short = refs.head_sha.slice(0, 8);
     const msg = kept.length
@@ -177,7 +186,9 @@ export async function finalizeCommit(
 ): Promise<void> {
   const botName = reviewerSettings().botName;
   const botEmoji = botName.toLowerCase().includes("turtle") ? "🐢" : "🤖";
-  const existing = (await listCommitCommentBodies(forge, projectId, headSha)).join("\n");
+  const existing = (await listCommitCommentBodies(forge, projectId, headSha))
+    .map(artifactHeader)
+    .join("\n");
   const existingMarkers = [...existing.matchAll(MARKER_RE)].map(
     (m) => [m[1], Number(m[2])] as const,
   );
@@ -206,7 +217,7 @@ export async function finalizeCommit(
     }
   }
 
-  if (!existing.includes(REVIEW_MARKER)) {
+  if (!existing.split("\n").includes(REVIEW_MARKER)) {
     let summary: string;
     if (kept.length) {
       const counts: Record<Severity, number> = { critical: 0, warning: 0, info: 0 };
@@ -216,7 +227,10 @@ export async function finalizeCommit(
           (a, b) =>
             RANK[b.severity] - RANK[a.severity] || a.file.localeCompare(b.file) || a.line - b.line,
         )
-        .map((f) => `| ${EMOJI[f.severity]} ${f.severity} | \`${f.file}:${f.line}\` | ${f.title} |`)
+        .map(
+          (f) =>
+            `| ${EMOJI[f.severity]} ${f.severity} | ${markdownText(f.file)}:${f.line} | ${markdownText(f.title)} |`,
+        )
         .join("\n");
       summary =
         `## ${botEmoji} ${botName} — push to ${markdownText(branch)}\n\n${markdownText(result.summary)}\n\n` +
@@ -225,7 +239,7 @@ export async function finalizeCommit(
         `**${counts.critical} critical · ${counts.warning} warning · ${counts.info} info**`;
     } else {
       summary =
-        `## ${botEmoji} ${botName} — push to \`${branch}\`\n\n` +
+        `## ${botEmoji} ${botName} — push to ${markdownText(branch)}\n\n` +
         `✅ No issues found above the confidence threshold.`;
     }
     await beforeWrite?.();

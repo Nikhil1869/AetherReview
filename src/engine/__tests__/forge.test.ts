@@ -4,6 +4,8 @@ import { findingMarker, getForgeClient, REVIEW_MARKER, STATUS_MARKER } from "../
 
 afterEach(() => {
   delete process.env.GITHUB_BACKEND;
+  delete process.env.GITHUB_TOKEN;
+  delete process.env.GITHUB_URL;
 });
 
 describe("markers", () => {
@@ -17,9 +19,22 @@ describe("markers", () => {
 });
 
 describe("getForgeClient factory", () => {
-  it("defaults GitHub to the MCP client", async () => {
+  it("uses REST for anonymous public previews", async () => {
+    const c = await getForgeClient("github");
+    expect(c.constructor.name).toBe("GitHubRestClient");
+    await c.close();
+  });
+  it("defaults authenticated GitHub sessions to the MCP client", async () => {
+    process.env.GITHUB_TOKEN = "fixture";
     const c = await getForgeClient("github");
     expect(c.constructor.name).toBe("GitHubMcpClient");
+    await c.close();
+  });
+  it("keeps alternate forge credentials at their selected origin", async () => {
+    process.env.GITHUB_URL = "https://enterprise.example.test";
+    process.env.GITHUB_TOKEN = "enterprise-fixture";
+    const c = await getForgeClient("github");
+    expect(c.constructor.name).toBe("GitHubRestClient");
     await c.close();
   });
   it("uses the REST client when GITHUB_BACKEND=rest", async () => {

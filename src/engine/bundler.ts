@@ -4,6 +4,7 @@
 import { reviewLimits } from "./config.js";
 import type { ForgeClient } from "./forge.js";
 import { isExcluded } from "./norms.js";
+import { sensitivePath, sensitiveText } from "./sensitiveSource.js";
 import * as rf from "./repoFiles.js";
 import type { ContextBundle, ContextFile, FileDiff, Norms } from "./types.js";
 
@@ -23,8 +24,11 @@ export async function buildContext(
   const files = new Map<string, ContextFile>();
   const notes: string[] = [];
   const seenSymbols = new Set<string>();
-  const getFile = (path: string) =>
-    isExcluded(path, norms) ? Promise.resolve(null) : gl.getFile(projectId, path, head);
+  const getFile = async (path: string) => {
+    if (sensitivePath(path) || isExcluded(path, norms)) return null;
+    const body = await gl.getFile(projectId, path, head);
+    return body && !sensitiveText(body) ? body : null;
+  };
 
   for (const d of diffs) {
     const path = d.newPath || d.oldPath;

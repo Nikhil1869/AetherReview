@@ -533,7 +533,12 @@ export async function getForgeClient(forge: string, readOnly = true): Promise<Fo
     // oauth tokens may have expired — refresh before either client reads it.
     const { ensureFreshGithubToken } = await import("./githubAuth.js");
     await ensureFreshGithubToken();
-    if (resolveToken("github") && (process.env.GITHUB_BACKEND ?? "mcp").toLowerCase() !== "rest") {
+    if (
+      URL.parse(process.env.GITHUB_URL ?? "https://api.github.com")?.origin ===
+        "https://api.github.com" &&
+      resolveToken("github") &&
+      (process.env.GITHUB_BACKEND ?? "mcp").toLowerCase() !== "rest"
+    ) {
       const { GitHubMcpClient } = await import("./forgeMcp.js");
       return new GitHubMcpClient(readOnly);
     }
