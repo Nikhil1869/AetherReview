@@ -1,4 +1,5 @@
 import process from "node:process";
+import { performance } from "node:perf_hooks";
 import console from "node:console";
 import { URL } from "node:url";
 import { execFileSync, execFile } from "node:child_process";
@@ -13,6 +14,17 @@ const fixture = process.argv.includes("--fixture");
 const endpoint = process.env.REVIEWER_BASE_URL;
 if (!fixture && (!endpoint || !process.env.REVIEWER_MODEL))
   throw Error("Set REVIEWER_BASE_URL and REVIEWER_MODEL explicitly.");
+if (!fixture) {
+  const url = new URL(endpoint);
+  if (
+    !["127.0.0.1", "[::1]", "localhost"].includes(url.hostname) ||
+    !["http:", "https:"].includes(url.protocol) ||
+    url.username ||
+    url.password
+  ) {
+    throw Error("This evaluation accepts only a local loopback reviewer.");
+  }
+}
 const root = mkdtempSync(join(tmpdir(), "aether-quality-"));
 const cli =
   process.env.AETHER_EVAL_CLI ?? fileURLToPath(new URL("../../dist/cli.js", import.meta.url));
@@ -83,11 +95,7 @@ try {
       REVIEWER_BASE_URL: server ? "http://127.0.0.1:" + server.address().port + "/v1" : endpoint,
     };
     delete env.GEMINI_API_KEY;
-    if (
-      fixture ||
-      ["127.0.0.1", "localhost", "[::1]"].includes(new URL(env.REVIEWER_BASE_URL).hostname)
-    )
-      env.REVIEWER_API_KEY = "local";
+    delete env.REVIEWER_API_KEY;
     const readRaw = () =>
       existsSync(locations) ? JSON.parse(readFileSync(locations, "utf8")) : null;
     const metrics = (raw) => ({
@@ -96,6 +104,7 @@ try {
         raw?.filter((f) => f?.file !== "sample.js" || Number(f?.line) !== 2).length ?? null,
       raw: process.argv.includes("--diagnose") ? raw : undefined,
     });
+    const started = performance.now();
     try {
       const { stdout } = await run(
         process.execPath,
@@ -108,6 +117,7 @@ try {
           id,
           expected,
           status: report.status,
+          elapsedMs: Math.round(performance.now() - started),
           ...metrics(readRaw()),
           findings: report.result.findings,
         }),
@@ -118,6 +128,7 @@ try {
           id,
           expected,
           status: "failed",
+          elapsedMs: Math.round(performance.now() - started),
           ...metrics(readRaw()),
           message: error.stdout ? JSON.parse(error.stdout).message : "Evaluation failed",
         }),
