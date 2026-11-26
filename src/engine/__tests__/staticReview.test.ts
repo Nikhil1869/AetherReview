@@ -32,6 +32,18 @@ describe("isolated TypeScript parser", () => {
     });
     expect(exported.diagnostics[0].location.range.start.line).toBe(2);
   });
+  it("reports an initializer hole at the comma and skips trailing commas and destructuring", async () => {
+    const holes = await reviewSource(
+      "const values = [1,\n /* gap */ , , 3];\nconst [, value] = values;\nconst dense = [1, 2,];",
+    );
+    expect(holes.findings).toHaveLength(1);
+    expect(holes.findings[0]).toMatchObject({
+      rule: "sparse-array-initializer",
+      line: 2,
+      endLine: 2,
+      evidence: " /* gap */ , , 3];",
+    });
+  });
   it("distinguishes equal case labels from different primitive types", async () => {
     const r = await reviewSource(
       'switch (x) {\ncase 1: break;\ncase "1": break;\ncase 1: break;\n}',

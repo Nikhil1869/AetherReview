@@ -91,10 +91,37 @@ export async function analyzeStatic(
       };
       finding.id = findingId(finding);
       findings.push(finding);
+      return true;
     };
     const stack: ts.Node[] = [source];
     while (stack.length) {
       const node = stack.pop()!;
+      if (
+        ts.isVariableDeclaration(node) &&
+        node.initializer &&
+        ts.isArrayLiteralExpression(node.initializer) &&
+        node.initializer.elements.some(ts.isOmittedExpression)
+      ) {
+        // Omitted expressions have zero width. Anchor the diagnostic on the
+        // following comma, which may be on a different line after trivia.
+        const list = node.initializer
+          .getChildren(source)
+          .find((n) => n.kind === ts.SyntaxKind.SyntaxList);
+        const tokens = list?.getChildren(source) ?? [];
+        for (let i = 1; i < tokens.length; i++) {
+          if (
+            ts.isOmittedExpression(tokens[i - 1]) &&
+            tokens[i].kind === ts.SyntaxKind.CommaToken &&
+            emit(
+              tokens[i],
+              "sparse-array-initializer",
+              "Array initializer contains an empty slot",
+              "This comma creates a hole in the array. Array methods such as map skip empty slots. Check whether a missing element is intended.",
+            )
+          )
+            break;
+        }
+      }
       if (
         ts.isBinaryExpression(node) &&
         (node.operatorToken.kind === ts.SyntaxKind.EqualsEqualsEqualsToken ||
