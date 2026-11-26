@@ -6,7 +6,7 @@
 | `aetherreview --version` | Print the executable version                                                           |
 | `aetherreview status`    | Show credential sources and the selected model                                         |
 | `aetherreview doctor`    | Check the reviewer's `/models` endpoint and look for the selected model                |
-| `aetherreview reset`     | Remove the app's saved credentials, model settings, logs, and locks after confirmation |
+| `aetherreview reset`     | Remove the app's saved credentials, model settings and watcher logs after confirmation |
 
 Use `reset --yes` to confirm a reset from a noninteractive shell. Custom norm files live in a separate subdirectory of the app store and are retained.
 

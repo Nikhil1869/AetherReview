@@ -6,6 +6,7 @@ import { setTimeout } from "node:timers/promises";
 
 import { isLoopback, parseReviewerEndpoint, reviewerSettings } from "./config.js";
 import { newSideLines } from "./diff.js";
+import { readBoundedText } from "./sourceBody.js";
 import { sensitiveText, sensitivePath } from "./sensitiveSource.js";
 import { findingId } from "./report.js";
 import {
@@ -198,7 +199,7 @@ export function describeModelError(e: unknown, model: string): Error {
     401: "api key rejected — re-run setup and paste a valid key for this provider",
     403: "key not allowed to use this model — check key restrictions",
     404: "model not found — check the model name in settings",
-    429: "rate limit or quota exhausted — free tiers often have little or no quota for pro models; switch to a cheaper model or add billing",
+    429: "rate limit or quota exhausted — retry after the provider resets its quota or select a local model",
   };
   const hint =
     hints[status] ??
@@ -271,7 +272,7 @@ async function runPass(
     raw = resp.choices[0]?.message?.content ?? "";
   }
 
-  if (typeof raw !== "string") throw new InvalidReviewResponse();
+  if (typeof raw !== "string" || raw.length > 131072) throw new InvalidReviewResponse();
   raw = raw.trim();
   if (raw.startsWith("```")) raw = raw.slice(raw.indexOf("{"), raw.lastIndexOf("}") + 1);
 
@@ -286,6 +287,14 @@ async function runPass(
   }
   const findings = data.findings.map(parseFinding).filter((f): f is Finding => f !== null);
   return { findings, summary: data.summary, unparsed: data.findings.length - findings.length };
+}
+
+function reviewerTimeout(local: boolean): number {
+  if (process.env.REVIEWER_TIMEOUT_MS === undefined) return local ? 180000 : 60000;
+  const value = Number(process.env.REVIEWER_TIMEOUT_MS);
+  if (!Number.isSafeInteger(value) || value < 1000 || value > 600000)
+    throw Error("REVIEWER_TIMEOUT_MS must be an integer from 1000 to 600000.");
+  return value;
 }
 
 export async function review(
@@ -306,10 +315,24 @@ export async function review(
     apiKey: s.apiKey || "local",
     baseURL: endpoint.href,
     // CPU-only loopback inference can exceed a minute even on a single small diff.
-    timeout: isLoopback(endpoint) ? 180_000 : 60_000,
+    timeout: reviewerTimeout(isLoopback(endpoint)),
     maxRetries: 0,
     logLevel: "off",
     fetchOptions: { redirect: "error" },
+    fetch: async (resource, init) => {
+      const response = await fetch(resource, init);
+      if (!response.body) return response;
+      const text = await readBoundedText(response, 1024 * 1024);
+      if (text === null) throw new InvalidReviewResponse();
+      const headers = new Headers(response.headers);
+      headers.delete("content-length");
+      headers.delete("content-encoding");
+      return new Response(text, {
+        status: response.status,
+        statusText: response.statusText,
+        headers,
+      });
+    },
   });
   const system = systemPrompt(norms);
   const preferences = { guidelines: norms.guidelines, examples: norms.examples };
@@ -343,8 +366,26 @@ export async function review(
   );
 
   // general pass failure is fatal (existing behaviour); focus passes are best-effort
+  const generalPass = async () => {
+    try {
+      return await runPass(client, s.model, system, user, log, signal);
+    } catch (error) {
+      if (!(error instanceof InvalidReviewResponse) || !isLoopback(endpoint) || signal?.aborted)
+        throw error;
+      const repaired = await runPass(
+        client,
+        s.model,
+        system + "\nReturn strict JSON using the requested schema.",
+        user,
+        log,
+        signal,
+      );
+      if (!repaired.findings.length) throw error;
+      return repaired;
+    }
+  };
   const [general, ...extras] = await Promise.all([
-    runPass(client, s.model, system, user, log, signal).catch((e) => {
+    generalPass().catch((e) => {
       throw describeModelError(e, s.model);
     }),
     ...foci.map((f) =>

@@ -1,3 +1,5 @@
+import { forgeRequest } from "./publicationAudit.js";
+
 interface ForgeArtifact {
   id?: number;
   user?: { id: number };
@@ -23,7 +25,7 @@ export class ForgeSession {
 
   async request(url: string, init: RequestInit = {}) {
     if (init.method && init.method !== "GET") await this.beforeWrite?.();
-    return fetch(url, {
+    return forgeRequest(url, {
       ...init,
       headers: { ...this.headers, ...init.headers },
       redirect: "error",

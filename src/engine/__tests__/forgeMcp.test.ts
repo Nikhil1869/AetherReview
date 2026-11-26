@@ -171,6 +171,35 @@ describe("GitHubMcpClient", () => {
     expect(mh.calls.map((c) => c.name)).toEqual(["add_comment_to_pending_review"]);
   });
 
+  it("accepts MCP's newly created empty draft but refuses to submit if its inline comment is missing", async () => {
+    let created = false;
+    mh.handler = () => {
+      created = true;
+      return { text: "pending pull request created", content: null, isError: false };
+    };
+    installFetch((url) =>
+      url.endsWith("/user")
+        ? { json: { id: 42 } }
+        : {
+            json:
+              created && url.includes("/reviews?")
+                ? [{ id: 77, user: { id: 42 }, state: "PENDING", commit_id: "h", body: "" }]
+                : [],
+          },
+    );
+    const client = new GitHubMcpClient();
+    expect(await client.postInlineNote("o/r", 1, "a.ts", 2, "<!-- ct:f:a.ts:2 -->", refs)).toBe(
+      true,
+    );
+    await expect(client.submitReview("o/r", 1, "summary", refs)).rejects.toThrow(
+      /unrecognized draft/i,
+    );
+    expect(mh.calls.map((c) => c.name)).toEqual([
+      "pull_request_review_write",
+      "add_comment_to_pending_review",
+    ]);
+  });
+
   it.each(["manual", "old head", "mixed comments", "unknown author"])(
     "refuses to submit an unverified pending draft: %s",
     async (variant) => {

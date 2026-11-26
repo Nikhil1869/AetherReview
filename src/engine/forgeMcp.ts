@@ -8,6 +8,9 @@ import { Client } from "@modelcontextprotocol/sdk/client/index.js";
 import { StreamableHTTPClientTransport } from "@modelcontextprotocol/sdk/client/streamableHttp.js";
 
 import { resolveToken } from "./config.js";
+import { auditMutation } from "./publicationAudit.js";
+import { safeSourcePath } from "./sourcePath.js";
+import { MAX_SOURCE_BYTES } from "./sourceBody.js";
 import {
   GitHubRestClient,
   readDiffPages,
@@ -75,13 +78,16 @@ export class GitHubMcpClient implements ForgeClient {
     opts?: { soft?: boolean },
   ): Promise<any> {
     const client = await this.ensure();
-    if (
-      ["pull_request_review_write", "add_comment_to_pending_review", "add_issue_comment"].includes(
-        tool,
-      )
-    )
-      await this.guard?.();
-    const res = await client.callTool({ name: tool, arguments: args });
+    const mutation = [
+      "pull_request_review_write",
+      "add_comment_to_pending_review",
+      "add_issue_comment",
+    ].includes(tool);
+    if (mutation) await this.guard?.();
+    const send = () => client.callTool({ name: tool, arguments: args });
+    const res = mutation
+      ? await auditMutation(tool, String(args.method ?? tool), send, (r) => !r.isError)
+      : await send();
     const text = ((res.content as any[]) ?? [])
       .map((c) => (typeof c?.text === "string" ? c.text : ""))
       .join("");
@@ -140,6 +146,7 @@ export class GitHubMcpClient implements ForgeClient {
   }
 
   async getFile(projectId: string, path: string, ref: string): Promise<string | null> {
+    if (!safeSourcePath(path)) return null;
     const { owner, repo } = this.split(projectId);
     const client = await this.ensure();
     const res = await client.callTool({
@@ -150,7 +157,7 @@ export class GitHubMcpClient implements ForgeClient {
     // File body arrives as an EmbeddedResource; TextContent is just a status line.
     for (const item of (res.content as any[]) ?? []) {
       const text = item?.resource?.text;
-      if (typeof text === "string") return text;
+      if (typeof text === "string" && Buffer.byteLength(text) <= MAX_SOURCE_BYTES) return text;
     }
     return null;
   }
@@ -162,6 +169,10 @@ export class GitHubMcpClient implements ForgeClient {
       { soft: true },
     );
     return (d?.items ?? []).filter((i: any) => i?.path).map((i: any) => ({ path: i.path }));
+  }
+
+  async getPolicyFile(projectId: string, ref: string) {
+    return this.rest().getPolicyFile(projectId, ref);
   }
 
   async listNotes(projectId: string, prNumber: number): Promise<Note[]> {
@@ -208,7 +219,8 @@ export class GitHubMcpClient implements ForgeClient {
     const comments = await rest.draftComments(projectId, prNumber, draft.id);
     const actor = await rest.session.actorId();
     if (
-      (!comments.length && !justCreated && !known && draft.body !== REVIEW_MARKER) ||
+      (justCreated && comments.length > 0) ||
+      (!comments.length && !justCreated && draft.body !== REVIEW_MARKER) ||
       comments.some(
         (c) =>
           c.user?.id !== actor ||
@@ -255,6 +267,10 @@ export class GitHubMcpClient implements ForgeClient {
       body,
     });
     return true;
+  }
+
+  async needsSummaryRecovery(projectId: string, prNumber: number, refs: DiffRefs) {
+    return this.rest().needsSummaryRecovery(projectId, prNumber, refs);
   }
 
   async submitReview(projectId: string, prNumber: number, body: string, refs: DiffRefs) {

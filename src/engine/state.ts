@@ -1,27 +1,16 @@
-import { existsSync, mkdirSync, readFileSync, rmSync, writeFileSync } from "node:fs";
 import { join } from "node:path";
 
+import { PublicationLocks } from "./publicationLock.js";
 import { HOME } from "./config.js";
 
 const seenEvents = new Map<string, number>();
 const latestCommit = new Map<string, string>();
-const locks = new Map<string, number>();
+const locks = new PublicationLocks(join(HOME, "locks"));
 
 const EVENT_TTL_MS = 60 * 60 * 1000;
-// generous: local multi-pass models can run >10 min — an expired lock mid-run
-// lets a second run start and double-post. TTL only guards crashed processes.
-const LOCK_TTL_MS = 30 * 60 * 1000;
 
 // ref: a PR number, or a `branch:<name>` string for push reviews
 const key = (projectId: string, ref: number | string) => `${projectId}#${ref}`;
-
-function getLockPath(k: string): string {
-  const dir = join(HOME, "locks");
-  if (!existsSync(dir)) {
-    mkdirSync(dir, { recursive: true });
-  }
-  return join(dir, encodeURIComponent(k) + ".lock");
-}
 
 export function seenEvent(uuid: string | null | undefined): boolean {
   if (!uuid) return false;
@@ -51,44 +40,9 @@ export function isLatest(
 }
 
 export function acquireLock(projectId: string, prNumber: number | string): boolean {
-  const k = key(projectId, prNumber);
-  const now = Date.now();
-
-  // 1. In-process check
-  const expiry = locks.get(k);
-  if (expiry != null && expiry > now) return false;
-
-  // 2. Cross-process check via lock file
-  const path = getLockPath(k);
-  if (existsSync(path)) {
-    try {
-      const content = readFileSync(path, "utf8");
-      const fileExpiry = Number(content);
-      if (!isNaN(fileExpiry) && fileExpiry > now) {
-        return false;
-      }
-    } catch {
-      // ignore read error and try to overwrite/claim lock
-    }
-  }
-
-  // 3. Acquire both locks
-  try {
-    locks.set(k, now + LOCK_TTL_MS);
-    writeFileSync(path, String(now + LOCK_TTL_MS), "utf8");
-    return true;
-  } catch {
-    return false;
-  }
+  return locks.acquire(key(projectId, prNumber));
 }
 
 export function releaseLock(projectId: string, prNumber: number | string): void {
-  const k = key(projectId, prNumber);
-  locks.delete(k);
-  const path = getLockPath(k);
-  try {
-    if (existsSync(path)) {
-      rmSync(path, { force: true });
-    }
-  } catch {}
+  locks.release(key(projectId, prNumber));
 }

@@ -1,4 +1,4 @@
-import { describe, expect, it } from "vitest";
+import { describe, expect, it, vi } from "vitest";
 
 import { buildContext } from "../bundler.js";
 import type { FileDiff, Norms } from "../types.js";
@@ -28,6 +28,17 @@ const diffs: FileDiff[] = [
 ];
 
 describe("buildContext", () => {
+  it("reserves reads for changed files and bounds lookups on unresolved imports", async () => {
+    const heavy = Array.from({ length: 100 }, (_, i) => 'import "./missing' + i + '";').join("\n");
+    const gl = makeFakeForge({ files: { "src/a.ts": heavy, "src/b.ts": "export const value=1;" } });
+    const extra = { ...diffs[0], oldPath: "src/b.ts", newPath: "src/b.ts" };
+    const out = await buildContext(gl, "o/r", "head", [...diffs, extra], norms);
+    expect(out.files.map((f) => f.path)).toEqual(["src/a.ts", "src/b.ts"]);
+    expect(
+      vi.mocked(gl.getFile).mock.calls.length + vi.mocked(gl.searchBlobs).mock.calls.length,
+    ).toBeLessThanOrEqual(48);
+    expect(out.notes.join(" ")).toMatch(/lookup limit/);
+  });
   it("does not fetch excluded files discovered as imports or callers", async () => {
     const gl = makeFakeForge({
       files: {

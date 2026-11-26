@@ -7,7 +7,8 @@ import { describeError, getForgeClient, getRestForgeClient, type ForgeClient } f
 import { branchHead, compareDiffs } from "./forgeCommits.js";
 import { readLocalChanges, type LocalTarget } from "./localGit.js";
 import { applyExcludes, loadNorms } from "./norms.js";
-import { finalize, finalizeCommit, markFailed } from "./poster.js";
+import { finalize, finalizeCommit } from "./poster.js";
+import { withPublicationAudit } from "./publicationAudit.js";
 import { review } from "./reviewer.js";
 import * as state from "./state.js";
 import type { FileDiff, Job, MrInfo, Norms, PushJob, ReviewResult } from "./types.js";
@@ -126,7 +127,6 @@ export async function runReview(
   // client construction can fail (token refresh is a network call) — the lock
   // must still be released, so it happens under the same finally
   let gl: ForgeClient | null = null;
-  let statusId: number | string | null = null;
   try {
     gl = await getForgeClient(job.forge, options.publish !== true);
     const mr = await gl.getMr(projectId, prNumber);
@@ -144,8 +144,11 @@ export async function runReview(
       return skip("nothing to review");
     }
     const sourceProject = mr.sourceProjectId ?? projectId;
-    const norms = await loadNorms(gl, sourceProject, mr, {
+    if (options.publish && !refs.base_sha)
+      throw Error("Missing base revision for publication policy.");
+    const norms = await loadNorms(gl, options.publish ? projectId : sourceProject, mr, {
       forge: job.forge,
+      policyRef: options.publish ? refs.base_sha : undefined,
       diffLines: countAddedLines(diffs),
     });
     const filtered = applyExcludes(diffs, norms);
@@ -182,13 +185,25 @@ export async function runReview(
     const outcome = completedReview(headRef, kept, omittedFiles);
     if (options.publish === true) {
       gl.beforeWrite = ensureCurrent;
-      statusId = await gl.postStatus(
-        projectId,
-        prNumber,
-        "🐢 **AetherReview** is publishing this review…",
-      );
-      const oldPaths = new Map(diff.files.map((file) => [file.newPath, file.oldPath]));
-      await finalize(gl, projectId, prNumber, refs, outcome.result, kept, statusId, log, oldPaths);
+      await withPublicationAudit(job.forge, projectId, prNumber, headRef, async () => {
+        const statusId = await client.postStatus(
+          projectId,
+          prNumber,
+          "🐢 **AetherReview** is publishing this review…",
+        );
+        const oldPaths = new Map(diff.files.map((file) => [file.newPath, file.oldPath]));
+        await finalize(
+          client,
+          projectId,
+          prNumber,
+          refs,
+          outcome.result,
+          kept,
+          statusId,
+          log,
+          oldPaths,
+        );
+      });
     }
     log(`pr=${prNumber} found=${result.findings.length} kept=${kept.length}`);
     return outcome;
@@ -197,7 +212,6 @@ export async function runReview(
       return skip(options.signal?.aborted ? "cancelled" : (e as Error).message);
     const message = describeError(e);
     log(`review failed pr=${prNumber}: ${message}`);
-    if (gl && statusId != null) await markFailed(gl, projectId, prNumber, statusId).catch(() => {});
     return { status: "failed", message };
   } finally {
     await gl?.close().catch(() => {});
@@ -228,6 +242,7 @@ export async function runPushReview(
   let gl: ForgeClient | null = null;
   try {
     gl = await getRestForgeClient(forge);
+    if (!baseSha) throw Error("Missing base revision for publication policy.");
     const diffs = await compareDiffs(forge, projectId, baseSha, headSha);
     if (!diffs.length) {
       log(`branch=${branch} nothing to review`);
@@ -242,6 +257,7 @@ export async function runPushReview(
     };
     const norms = await loadNorms(gl, projectId, mrLike, {
       forge,
+      policyRef: baseSha,
       diffLines: countAddedLines(diffs),
     });
     const filtered = applyExcludes(diffs, norms);
@@ -260,24 +276,26 @@ export async function runPushReview(
     if (options.signal?.aborted || !state.isLatest(projectId, ref, headSha)) return;
     log(`branch=${branch} found=${result.findings.length} kept=${kept.length}`);
     const outcome = completedReview(headSha, kept, 0);
-    await finalizeCommit(
-      forge,
-      projectId,
-      branch,
-      headSha,
-      filtered,
-      outcome.result,
-      kept,
-      log,
-      async () => {
-        const current = await branchHead(forge, projectId, branch);
-        if (
-          options.signal?.aborted ||
-          current !== headSha ||
-          !state.isLatest(projectId, ref, headSha)
-        )
-          throw new PublicationStopped("Branch publication cancelled or superseded.");
-      },
+    await withPublicationAudit(forge, projectId, ref, headSha, () =>
+      finalizeCommit(
+        forge,
+        projectId,
+        branch,
+        headSha,
+        filtered,
+        outcome.result,
+        kept,
+        log,
+        async () => {
+          const current = await branchHead(forge, projectId, branch);
+          if (
+            options.signal?.aborted ||
+            current !== headSha ||
+            !state.isLatest(projectId, ref, headSha)
+          )
+            throw new PublicationStopped("Branch publication cancelled or superseded.");
+        },
+      ),
     );
   } catch (e) {
     log(`review failed branch=${branch}: ${describeError(e)}`);

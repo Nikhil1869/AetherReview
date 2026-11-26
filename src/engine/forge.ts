@@ -2,6 +2,8 @@
  * clients here cover GitLab and the GITHUB_BACKEND=rest escape hatch. */
 
 import { ForgeSession } from "./forgeSession.js";
+import { safeSourcePath } from "./sourcePath.js";
+import { readPolicy, readSourceBody } from "./sourceBody.js";
 import { gitlabUrl, resolveToken } from "./config.js";
 import type { DiffRefs, FileDiff, MrInfo } from "./types.js";
 
@@ -39,10 +41,12 @@ export async function readDiffPages<T>(
 
 export interface ForgeClient {
   beforeWrite?: () => Promise<void>;
+  needsSummaryRecovery?(projectId: string, prNumber: number, refs: DiffRefs): Promise<boolean>;
   close(): Promise<void>;
   getMr(projectId: string, prNumber: number): Promise<MrInfo>;
   getDiffs(projectId: string, prNumber: number): Promise<FileDiff[]>;
   getFile(projectId: string, path: string, ref: string): Promise<string | null>;
+  getPolicyFile?(projectId: string, ref: string): Promise<string | null>;
   searchBlobs(projectId: string, query: string, ref: string): Promise<{ path: string }[]>;
   createNote(projectId: string, prNumber: number, body: string): Promise<number | string>;
   editNote(
@@ -135,11 +139,27 @@ export class GitLabClient implements ForgeClient {
   }
 
   async getFile(projectId: string, path: string, ref: string): Promise<string | null> {
+    if (!safeSourcePath(path)) return null;
     const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/repository/files/${encodeURIComponent(path)}/raw?ref=${encodeURIComponent(ref)}`,
       { headers: this.headers },
     );
-    return r.ok ? r.text() : null;
+    return readSourceBody(r);
+  }
+
+  async getPolicyFile(projectId: string, ref: string) {
+    const response = await this.session.request(
+      `${this.base}/projects/${this.enc(projectId)}/repository/files/.aetherreview.yml/raw?ref=${encodeURIComponent(ref)}`,
+    );
+    return readPolicy(response, () =>
+      this.session.request(
+        this.base +
+          "/projects/" +
+          this.enc(projectId) +
+          "/repository/commits/" +
+          encodeURIComponent(ref),
+      ),
+    );
   }
 
   async searchBlobs(projectId: string, query: string, ref: string) {
@@ -257,6 +277,11 @@ export class GitLabClient implements ForgeClient {
     return false; // GitLab has no formal review object; poster falls back to sticky note
   }
 
+  async needsSummaryRecovery() {
+    // GitLab stores the summary in the sticky note that postStatus just edited.
+    return true;
+  }
+
   async listOpenPrs(projectId: string) {
     const r = await this.session.request(
       `${this.base}/projects/${this.enc(projectId)}/merge_requests?state=opened&per_page=100`,
@@ -330,13 +355,25 @@ export class GitHubRestClient implements ForgeClient {
 
   async getFile(projectId: string, path: string, ref: string): Promise<string | null> {
     const segments = path.split("/");
-    if (segments.some((part) => !part || part === "." || part === "..")) return null;
+    if (!safeSourcePath(path)) return null;
     const encoded = segments.map(encodeURIComponent).join("/");
     const r = await this.session.request(
       `${this.base}/repos/${projectId}/contents/${encoded}?ref=${encodeURIComponent(ref)}`,
       { headers: { ...this.headers, Accept: "application/vnd.github.raw" } },
     );
-    return r.ok ? r.text() : null;
+    return readSourceBody(r);
+  }
+
+  async getPolicyFile(projectId: string, ref: string) {
+    const response = await this.session.request(
+      `${this.base}/repos/${projectId}/contents/.aetherreview.yml?ref=${encodeURIComponent(ref)}`,
+      { headers: { Accept: "application/vnd.github.raw" } },
+    );
+    return readPolicy(response, () =>
+      this.session.request(
+        this.base + "/repos/" + projectId + "/git/commits/" + encodeURIComponent(ref),
+      ),
+    );
   }
 
   async searchBlobs(projectId: string, query: string) {
@@ -397,6 +434,16 @@ export class GitHubRestClient implements ForgeClient {
         this.base + "/repos/" + projectId + "/pulls/" + prNumber + "/reviews",
       )
     ).filter((r) => r.user?.id === actor);
+  }
+
+  async needsSummaryRecovery(projectId: string, prNumber: number, refs: DiffRefs) {
+    const reviews = await this.ownedReviews(projectId, prNumber);
+    return (
+      reviews.some((r) => r.state === "PENDING") ||
+      !reviews.some(
+        (r) => r.commit_id === refs.head_sha && r.body?.split("\n", 1)[0] === REVIEW_MARKER,
+      )
+    );
   }
 
   async draftComments(projectId: string, prNumber: number, reviewId: number) {

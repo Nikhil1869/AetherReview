@@ -68,10 +68,11 @@ const repoNormsSchema = z.object({
 export interface LoadNormsCtx {
   forge?: Forge;
   diffLines?: number;
+  policyRef?: string;
 }
 
 export async function loadNorms(
-  gl: Pick<ForgeClient, "getFile">,
+  gl: Pick<ForgeClient, "getFile" | "getPolicyFile">,
   projectId: string,
   mr: MrInfo,
   ctx: LoadNormsCtx = {},
@@ -81,15 +82,22 @@ export async function loadNorms(
 
   // repo .aetherreview.yml — UNTRUSTED. strip redirect/key fields; `extends` is name-only.
   let repoCfg: RawNorms = {};
-  const ref = mr.diffRefs?.head_sha || mr.sourceBranch;
+  const ref = ctx.policyRef ?? (mr.diffRefs?.head_sha || mr.sourceBranch);
   if (ref) {
-    const raw = await gl.getFile(projectId, ".aetherreview.yml", ref).catch(() => null);
+    const raw =
+      ctx.policyRef && gl.getPolicyFile
+        ? await gl.getPolicyFile(projectId, ref)
+        : await gl.getFile(projectId, ".aetherreview.yml", ref).catch(() => null);
+    if (ctx.policyRef && raw && raw.length > 32000)
+      throw Error("Publication policy exceeds the input limit.");
     if (raw && raw.length <= 32_000) {
       try {
         // The allowlist strips unknown keys, including agent and key_ref.
         const parsed = repoNormsSchema.safeParse(parse(raw));
         if (parsed.success) repoCfg = parsed.data;
+        else if (ctx.policyRef) throw Error("Invalid publication policy.");
       } catch {
+        if (ctx.policyRef) throw Error("Cannot parse the base revision's publication policy.");
         repoCfg = {};
       }
     }

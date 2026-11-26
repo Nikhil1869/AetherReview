@@ -237,12 +237,11 @@ export function resetLogin(): void {
   writeJson(CONFIG_PATH, cfg);
 }
 
-/** Wipe all local config: credentials, settings, logs, pid, locks. */
+/** Wipe saved configuration. An active review still owns its publication lock. */
 export function resetAll(): void {
   for (const f of [CRED_PATH, CONFIG_PATH, LOG_FILE, PID_FILE, GITHUB_APP_KEY_PATH]) {
     rmSync(f, { force: true });
   }
-  rmSync(join(HOME, "locks"), { recursive: true, force: true });
 }
 
 /** Default input-context budget per review (tokens). At ~4 chars/token this

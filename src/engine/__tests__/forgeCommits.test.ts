@@ -100,6 +100,22 @@ describe("listCommitCommentBodies", () => {
 });
 
 describe("postCommitComment", () => {
+  it.each(["github", "gitlab"] as const)(
+    "stops %s retries after an uncertain, denied or rate-limited write",
+    async (forge) => {
+      for (const status of [403, 429, 500, 503]) {
+        const { calls } = installFetch(() => ({ status }));
+        await expect(
+          postCommitComment(forge, "o/r", "sha", "body", { path: "a.ts", line: 2, patch: PATCH }),
+        ).rejects.toThrow(String(status));
+        expect(calls).toHaveLength(1);
+      }
+    },
+  );
+  it("rejects a failed unanchored fallback", async () => {
+    installFetch(() => ({ status: 422 }));
+    await expect(postCommitComment("github", "o/r", "sha", "body")).rejects.toThrow("422");
+  });
   it("anchors GitHub comments by diff position", async () => {
     const { calls } = installFetch(() => ({ json: {} }));
     await postCommitComment("github", "o/r", "sha", "body", {

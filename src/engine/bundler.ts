@@ -5,6 +5,8 @@ import { reviewLimits } from "./config.js";
 import type { ForgeClient } from "./forge.js";
 import { isExcluded } from "./norms.js";
 import { sensitivePath, sensitiveText } from "./sensitiveSource.js";
+import { safeSourcePath } from "./sourcePath.js";
+import { MAX_SOURCE_BYTES } from "./sourceBody.js";
 import * as rf from "./repoFiles.js";
 import type { ContextBundle, ContextFile, FileDiff, Norms } from "./types.js";
 
@@ -24,23 +26,55 @@ export async function buildContext(
   const files = new Map<string, ContextFile>();
   const notes: string[] = [];
   const seenSymbols = new Set<string>();
+  const limits = reviewLimits();
+  const lookupLimit = Math.min(128, Math.max(0, limits.maxContextFiles * 4));
+  const visited = new Set<string>();
+  let lookups = 0;
+  let limited = false;
+  const reserve = () => {
+    if (lookups < lookupLimit) {
+      lookups++;
+      return true;
+    }
+    limited = true;
+    return false;
+  };
   const getFile = async (path: string) => {
-    if (sensitivePath(path) || isExcluded(path, norms)) return null;
+    if (
+      !safeSourcePath(path) ||
+      sensitivePath(path) ||
+      isExcluded(path, norms) ||
+      visited.has(path) ||
+      !reserve()
+    )
+      return null;
+    visited.add(path);
     const body = await gl.getFile(projectId, path, head);
-    return body && !sensitiveText(body) ? body : null;
+    return body && Buffer.byteLength(body) <= MAX_SOURCE_BYTES && !sensitiveText(body)
+      ? body
+      : null;
   };
 
+  // Reserve context for changed files before discovering any optional neighbors.
   for (const d of diffs) {
     const path = d.newPath || d.oldPath;
     if (!path || d.deletedFile) continue;
-    const lang = rf.langOf(path);
+    if (files.size >= limits.maxContextFiles || lookups >= lookupLimit) {
+      limited = true;
+      break;
+    }
     const full = await getFile(path);
-    if (!full) continue;
-
-    if (!files.has(path)) files.set(path, { path, reason: "changed", content: clip(full) });
+    if (full) files.set(path, { path, reason: "changed", content: clip(full) });
+  }
+  for (const { path, content: full } of [...files.values()]) {
+    const lang = rf.langOf(path);
 
     // imports — one hop, relative only
     for (const spec of rf.parseImports(full, lang)) {
+      if (lookups >= lookupLimit) {
+        limited = true;
+        break;
+      }
       for (const cand of rf.resolveImport(spec, path, lang)) {
         if (files.has(cand)) break;
         const body = await getFile(cand);
@@ -54,6 +88,7 @@ export async function buildContext(
     // callers — search repo for exported symbols
     for (const sym of rf.exportedSymbols(full, lang)) {
       if (seenSymbols.has(sym)) continue;
+      if (!reserve()) break;
       seenSymbols.add(sym);
       const hits = await gl.searchBlobs(projectId, sym, head).catch(() => []);
       for (const hit of hits.slice(0, 3)) {
@@ -78,13 +113,13 @@ export async function buildContext(
         break;
       }
     }
-    if (!foundTest && (lang === "ts" || lang === "py")) {
+    if (!foundTest && !limited && (lang === "ts" || lang === "py")) {
       notes.push(`no matching test file found for ${path}`);
     }
   }
 
   // rank + budget
-  const limits = reviewLimits();
+  if (limited) notes.push("Context lookup limit reached; some relationships were not checked.");
   const ranked = [...files.values()].sort((a, b) => (RANK[a.reason] ?? 9) - (RANK[b.reason] ?? 9));
   const kept: ContextFile[] = [];
   let total = 0;

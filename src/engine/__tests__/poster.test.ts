@@ -101,6 +101,15 @@ describe("finalize — no duplicate summary, exclusive labels", () => {
     expect(status?.body).toContain("earlier review summary still applies");
   });
 
+  it("recovers the missing summary after a previous inline write succeeded", async () => {
+    const gl = makeFakeForge({ notes: [oldMarkerNote] });
+    gl.needsSummaryRecovery = async () => true;
+    const id = await gl.postStatus("o/r", 1, "reviewing");
+    await finalize(gl, "o/r", 1, refs, result, [finding(2)], id);
+    expect(gl.inline).toHaveLength(0);
+    expect(gl.submitted).toHaveLength(1);
+  });
+
   it("still submits a summary when a re-review finds something new", async () => {
     const gl = makeFakeForge({ notes: [oldMarkerNote] });
     const statusId = await gl.postStatus("o/r", 1, "reviewing");
