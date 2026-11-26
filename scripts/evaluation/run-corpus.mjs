@@ -9,6 +9,8 @@ import { URL, fileURLToPath } from "node:url";
 import { promisify } from "node:util";
 const run = promisify(execFile);
 const [mode, split] = process.argv.slice(2);
+const batchSize = Number(process.argv[4] ?? 1);
+if (![1, 6].includes(batchSize)) throw Error("Choose a batch size of 1 or 6.");
 if (
   !["static", "ai", "hybrid"].includes(mode) ||
   !["development", "heldOut", "all"].includes(split)
@@ -51,14 +53,30 @@ for (const key of Object.keys(env))
     )
   )
     delete env[key];
+const batches = [];
+for (const partition of ["development", "heldOut"]) {
+  if (split !== "all" && split !== partition) continue;
+  const rows = cases.filter((c) => c.split === partition);
+  if (batchSize > 1) rows.sort((a, b) => a.id.localeCompare(b.id));
+  for (let i = 0; i < rows.length; i += batchSize) batches.push(rows.slice(i, i + batchSize));
+}
+if (batchSize > 1) env.MAX_CONTEXT_FILES = "0";
 try {
-  for (const row of cases) {
-    if (split !== "all" && row.split !== split) continue;
+  for (const batch of batches) {
+    const row = batch[0];
     const cwd = join(root, row.id);
     await mkdir(cwd);
     await run("git", ["init", "-q", "--template="], { cwd, env });
-    await writeFile(join(cwd, "sample.js"), row.code + "\n");
-    await run("git", ["-c", "core.autocrlf=false", "add", "--", "sample.js"], { cwd, env });
+    const files = {};
+    for (const [index, item] of batch.entries()) {
+      const file = batchSize === 1 ? "sample.js" : "sample" + (index + 1) + ".js";
+      files[file] = item.id;
+      await writeFile(join(cwd, file), item.code + "\n");
+    }
+    await run("git", ["-c", "core.autocrlf=false", "add", "--", ...Object.keys(files)], {
+      cwd,
+      env,
+    });
     const usage = join(cwd, "usage.json"),
       raw = join(cwd, "raw.json");
     const started = performance.now();
@@ -100,6 +118,8 @@ try {
     console.log(
       JSON.stringify({
         id: row.id,
+        files,
+        batchSize,
         split: row.split,
         mode,
         status: result.status,
