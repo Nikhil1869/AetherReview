@@ -47,6 +47,8 @@ Full per-module detail: [Engine Reference](./engine-reference.md).
 
 ## The review data flow
 
+CLI previews can select the pinned TypeScript parser, the configured model, or both. Static checks consume in-memory source from the existing adapters and verify the reported line against the patch. Hybrid output identifies which tool produced each finding. The static and hybrid paths stop at preview. [Analysis modes, limitations and evaluation](hybrid-analysis.md)
+
 The CLI and dashboard call `pipeline.runReview(target, log, options)`. Local targets use the Git reader. Forge targets use an adapter and share the same evidence validation. The watcher calls the same entry point for requests and uses `runPushReview` for branch pushes.
 
 ```

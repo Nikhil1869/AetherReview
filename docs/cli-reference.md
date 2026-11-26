@@ -26,6 +26,8 @@ The model download requires internet access. Inference for this local tag runs o
 
 ## Review targets
 
+For a model-free preview, run `aetherreview review --staged --analysis static`. A configured model can be selected with `--analysis ai` or combined with static diagnostics using `--analysis hybrid`. The CLI also exports Reviewdog diagnostics with `--format rdjson`. [Analysis and evaluation](hybrid-analysis.md)
+
 ```bash
 aetherreview review                           # working tree relative to HEAD
 aetherreview review --staged                  # index relative to HEAD
