@@ -34,6 +34,14 @@ describe("PROVIDERS registry", () => {
 });
 
 describe("detectLocalModels", () => {
+  it("only probes loopback and rejects oversized catalogs and control characters in IDs", async () => {
+    const { calls } = installFetch(() => ({ text: " ".repeat(1024 * 1024 + 1) }));
+    expect(await detectLocalModels("https://catalog.example/v1")).toBeNull();
+    expect(calls).toHaveLength(0);
+    expect(await detectLocalModels("http://localhost:1234/v1")).toBeNull();
+    installFetch(() => ({ json: { data: [{ id: "bad\nname" }] } }));
+    expect(await detectLocalModels("http://localhost:1234/v1")).toBeNull();
+  });
   it("returns model ids from a local /models endpoint", async () => {
     installFetch((url) =>
       url.endsWith("/models") ? { json: { data: [{ id: "m1" }, { id: "m2" }] } } : { status: 404 },

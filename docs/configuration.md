@@ -1,5 +1,7 @@
 # Configuration
 
+On a fresh installation CLI previews use the static JS/TS analyzer. Explicit AI or hybrid mode defaults to local Ollama at `http://localhost:11434/v1` with `qwen2.5-coder:3b`. Select an installed model with `REVIEWER_MODEL`. Model downloads are manual. Selecting a hosted model requires configuring the provider endpoint. A shell key alone no longer selects Gemini or attaches that key to the default local endpoint. Existing stored key-only Gemini profiles retain their original destination.
+
 [← Docs index](./README.md)
 
 There are two places configuration lives:

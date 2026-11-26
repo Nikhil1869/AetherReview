@@ -2,7 +2,13 @@
  * the OpenAI chat-completions dialect (native or via compat endpoint), so one
  * reviewer client covers all of them, including local servers. */
 
-import { parseReviewerEndpoint, reviewerConfigured, reviewerSettings } from "./config.js";
+import {
+  isLoopback,
+  parseReviewerEndpoint,
+  reviewerConfigured,
+  reviewerSettings,
+} from "./config.js";
+import { readBoundedText } from "./sourceBody.js";
 
 export interface Provider {
   id: string;
@@ -14,6 +20,13 @@ export interface Provider {
 }
 
 export const PROVIDERS: Provider[] = [
+  {
+    id: "ollama",
+    label: "Ollama (local)",
+    baseUrl: "http://localhost:11434/v1",
+    local: true,
+    models: [],
+  },
   {
     id: "gemini",
     label: "Google Gemini",
@@ -50,13 +63,6 @@ export const PROVIDERS: Provider[] = [
     models: ["llama-4-maverick", "qwen-3-72b"],
   },
   {
-    id: "ollama",
-    label: "Ollama (local)",
-    baseUrl: "http://localhost:11434/v1",
-    local: true,
-    models: [],
-  },
-  {
     id: "lmstudio",
     label: "LM Studio (local)",
     baseUrl: "http://localhost:1234/v1",
@@ -71,18 +77,38 @@ export const PROVIDERS: Provider[] = [
   },
 ];
 
+async function readModelIds(response: Response): Promise<string[] | null> {
+  const text = await readBoundedText(response, 1024 * 1024);
+  if (text === null) return null;
+  const body = JSON.parse(text);
+  if (body?.data === null) return [];
+  if (!Array.isArray(body?.data)) return null;
+  const ids: string[] = [];
+  for (const item of body.data) {
+    if (typeof item?.id !== "string" || !item.id.trim() || item.id.length > 512) return null;
+    if (/\p{Cc}/u.test(item.id)) return null;
+    ids.push(item.id);
+  }
+  return ids;
+}
+
 /** Live-detect models on a local OpenAI-compatible server (Ollama, LM Studio).
  * null = server unreachable; [] = server up but no models installed (e.g. a
  * fresh Ollama before any `ollama pull`) — callers should word these apart. */
 export async function detectLocalModels(baseUrl: string): Promise<string[] | null> {
   try {
-    const res = await fetch(`${baseUrl.replace(/\/$/, "")}/models`, {
+    const url = parseReviewerEndpoint(baseUrl);
+    if (!url || !isLoopback(url)) return null;
+    url.pathname = url.pathname.replace(/\/$/, "") + "/models";
+    const res = await fetch(url, {
       signal: AbortSignal.timeout(2000),
       redirect: "error",
     });
-    if (!res.ok) return null;
-    const data = (await res.json()) as { data?: { id: string }[] | null };
-    return (data.data ?? []).map((m) => m.id);
+    if (!res.ok) {
+      await res.body?.cancel();
+      return null;
+    }
+    return await readModelIds(res);
   } catch {
     return null;
   }
@@ -100,15 +126,17 @@ export async function diagnoseReviewer(): Promise<{ ok: boolean; message: string
       signal: AbortSignal.timeout(5000),
       redirect: "error",
     });
-    if (!response.ok)
+    if (!response.ok) {
+      await response.body?.cancel();
       return {
         ok: false,
         message: `${endpoint.origin} returned HTTP ${response.status} for model discovery.`,
       };
-    const body = (await response.json()) as { data?: { id?: unknown }[] };
-    if (!Array.isArray(body?.data))
+    }
+    const models = await readModelIds(response);
+    if (!models)
       return { ok: false, message: `${endpoint.origin} returned an invalid model list.` };
-    const found = body.data.some((model) => model?.id === settings.model);
+    const found = models.includes(settings.model);
     return {
       ok: found,
       message: `${endpoint.origin} ${found ? "lists" : "does not list"} the configured model.`,

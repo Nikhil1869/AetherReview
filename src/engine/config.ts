@@ -154,6 +154,7 @@ export function updateConfig<K extends keyof AppConfig>(section: K, fields: AppC
 }
 
 export interface ReviewerSettings {
+  configured: boolean;
   apiKey: string;
   baseUrl: string;
   model: string;
@@ -176,17 +177,27 @@ export function getBotName(model: string, customBotName?: string): string {
 export function reviewerSettings(): ReviewerSettings {
   const cfg = loadConfig().reviewer ?? {};
   const gemini = "https://generativelanguage.googleapis.com/v1beta/openai/";
-  const configuredUrl = cfg.base_url ?? gemini;
+  // Older saved profiles stored only a Gemini key. Keep its destination bound
+  // to that origin. A key in the shell alone never selects a hosted provider.
+  const ollama = "http://localhost:11434/v1";
+  const configuredUrl = cfg.base_url ?? (cfg.api_key ? gemini : ollama);
   const baseUrl = process.env.REVIEWER_BASE_URL ?? configuredUrl;
-  const origin = parseReviewerEndpoint(baseUrl)?.origin;
+  const endpoint = parseReviewerEndpoint(baseUrl);
+  const origin = endpoint?.origin;
   const storedKey =
     origin && origin === parseReviewerEndpoint(configuredUrl)?.origin ? cfg.api_key : undefined;
   const geminiKey = origin === new URL(gemini).origin ? process.env.GEMINI_API_KEY : undefined;
-  const apiKey = process.env.REVIEWER_API_KEY ?? geminiKey ?? storedKey ?? "";
-  const model = process.env.REVIEWER_MODEL ?? cfg.model ?? "gemini-2.5-flash";
+  const selectedEndpoint = !!(process.env.REVIEWER_BASE_URL || cfg.base_url || cfg.api_key);
+  const apiKey = selectedEndpoint
+    ? (process.env.REVIEWER_API_KEY ?? geminiKey ?? storedKey ?? "")
+    : "";
+  const selectedModel = process.env.REVIEWER_MODEL ?? cfg.model;
+  const local = !!endpoint && isLoopback(endpoint);
+  const model = selectedModel ?? (local ? "qwen2.5-coder:3b" : "gemini-2.5-flash");
   const botName = process.env.REVIEWER_BOT_NAME ?? cfg.bot_name ?? getBotName(model);
   const rawPasses = Number(process.env.REVIEWER_PASSES ?? cfg.passes ?? 1);
   return {
+    configured: !!endpoint && (selectedEndpoint || !!selectedModel) && (!!apiKey || local),
     apiKey,
     baseUrl,
     model,
@@ -218,9 +229,7 @@ export function isLoopback(endpoint: URL): boolean {
 
 /** True when a reviewer model is usable: an api key, or a local base url. */
 export function reviewerConfigured(): boolean {
-  const s = reviewerSettings();
-  const endpoint = parseReviewerEndpoint(s.baseUrl);
-  return !!endpoint && (!!s.apiKey || isLoopback(endpoint));
+  return reviewerSettings().configured;
 }
 
 /** Sign out: drop forge credentials, watched repos, and the reviewer/model
