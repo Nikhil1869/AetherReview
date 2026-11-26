@@ -29,6 +29,11 @@ export type Category =
 
 export interface Finding {
   id?: string;
+  endLine?: number;
+  tool?: string;
+  rule?: string;
+  verification?: "source-anchored" | "rule-verified";
+  revision?: string;
   file: string;
   line: number;
   severity: Severity;

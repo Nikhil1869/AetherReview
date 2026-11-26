@@ -26,6 +26,8 @@ The model download requires internet access. Inference for this local tag runs o
 
 ## Review targets
 
+For a model-free preview, run `aetherreview review --staged --analysis static`. A configured model can be selected with `--analysis ai` or combined with static diagnostics using `--analysis hybrid`. The CLI also exports Reviewdog diagnostics with `--format rdjson`. [Analysis and evaluation](hybrid-analysis.md)
+
 ```bash
 aetherreview review                           # working tree relative to HEAD
 aetherreview review --staged                  # index relative to HEAD
@@ -47,19 +49,20 @@ Git reviews skip binary and metadata-only patches, submodule contents, and overs
 aetherreview review --staged --json > review.json
 aetherreview review --base main --format markdown > review.md
 aetherreview review --staged --format sarif --fail-on critical > review.sarif
+aetherreview review --staged --analysis static --format rdjson > review.json
 ```
 
-Terminal output is the default. Use `--quiet` for a terminal summary or `--verbose` for progress on stderr. JSON has `schemaVersion: 1`, a `status` of `completed`, `skipped`, or `failed`, and either a `message` or these fields.
+Terminal output is the default. Use `--quiet` for a terminal summary or `--verbose` for progress on stderr. JSON has `schemaVersion: 1`. A skipped or failed review contains a message. Completed and partial reviews contain the fields below. A partial hybrid preview retains verified static results when inference fails.
 
 - `headSha` is the reviewed commit for a remote request or commit comparison. It is `index` or `working-tree` for a mutable local snapshot.
 - `omittedFiles` counts unavailable or over-budget patches known to the engine, excluding files deliberately omitted by norms.
 - `result` contains the summary and findings. Each finding includes a stable hash for the file, line, category, and evidence, plus severity, confidence, title, and explanation. Suggested remediation is optional.
 
-| Exit | Meaning                                                                    |
-| ---- | -------------------------------------------------------------------------- |
-| 0    | Completed or skipped review. Findings alone leave the exit status at zero. |
-| 1    | Invalid options, provider or forge failure, or a failed diagnostic         |
-| 2    | Completed review with a finding meeting the opt-in `--fail-on` threshold   |
-| 130  | Interrupted with Ctrl+C                                                    |
+| Exit | Meaning                                                                                    |
+| ---- | ------------------------------------------------------------------------------------------ |
+| 0    | Completed or skipped review. Findings alone leave the exit status at zero.                 |
+| 1    | Partial hybrid preview, invalid options, provider or forge failure, or a failed diagnostic |
+| 2    | Completed review with a finding meeting the opt-in `--fail-on` threshold                   |
+| 130  | Interrupted with Ctrl+C                                                                    |
 
 Treat the results as review leads. Matching evidence verifies a source location. The model's explanation and suggested fix still need engineering judgment.

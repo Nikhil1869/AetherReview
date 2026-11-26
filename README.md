@@ -1,13 +1,13 @@
 ## AetherReview
 
-AetherReview reviews local Git changes, GitHub pull requests, and GitLab merge requests from your terminal. It sends a bounded diff and selected context to the OpenAI-compatible endpoint you configure and checks each finding's evidence against an added line. You can use a model running on your machine or a hosted provider.
+AetherReview previews local Git changes, GitHub pull requests and GitLab merge requests from your terminal. A fresh installation checks JavaScript and TypeScript with three parser rules and requires no model or credentials for staged changes. With an explicitly selected reviewer, the CLI can send a bounded diff and context to a local OpenAI-compatible model and check its reported evidence against added lines. See the [analysis guide](docs/hybrid-analysis.md) for rule coverage and the evaluation corpus.
 
 ## Install from source
 
 Use Node.js 22.12 or later and Git.
 
 ```bash
-git clone https://github.com/Nikhil1869/AetherReview.git
+git clone --branch quality/local-analysis https://github.com/Nikhil1869/AetherReview.git
 cd AetherReview
 npm ci
 npm pack
@@ -19,16 +19,16 @@ aetherreview --version
 
 ## Review local changes
 
-Start a local OpenAI-compatible model server and set its base URL and an installed model ID. This example uses Ollama and assumes the model is already available.
+To try the parser immediately, run `aetherreview review --staged --analysis static` in a Git checkout. For semantic review, start a local OpenAI-compatible model server and select an installed model. The following example uses the Ollama model evaluated on this branch.
 
 ```bash
 export REVIEWER_BASE_URL=http://127.0.0.1:11434/v1
-export REVIEWER_MODEL=qwen2.5-coder
+export REVIEWER_MODEL=qwen2.5-coder:3b
 aetherreview doctor
 aetherreview review --staged
 ```
 
-In PowerShell, use `$env:REVIEWER_BASE_URL = "http://127.0.0.1:11434/v1"` and `$env:REVIEWER_MODEL = "qwen2.5-coder"`. Local Git reviews need no forge credentials. Use the [configuration guide](docs/configuration.md) for hosted endpoints, model settings, and repository rules.
+In PowerShell, use `$env:REVIEWER_BASE_URL = "http://127.0.0.1:11434/v1"` and `$env:REVIEWER_MODEL = "qwen2.5-coder:3b"`. Local Git reviews need no forge credentials. Use the [configuration guide](docs/configuration.md) for hosted endpoints, model settings and repository rules.
 
 ## Preview a pull request
 
@@ -44,6 +44,7 @@ Add `--publish` to authorize inline comments, the summary, and status or label u
 
 - [CLI reference](docs/cli-reference.md) covers Git targets, reports, quality gates, and exit codes.
 - [Configuration](docs/configuration.md) covers local and hosted endpoints, credentials, and norms.
+- [Release decision and benchmark](docs/evaluation/2026-11-26/README.md) records the held-out results, model limitations and outstanding gates.
 - [Architecture](docs/architecture.md) and [engine reference](docs/engine-reference.md) describe the review pipeline.
 - [Security policy](SECURITY.md) describes where data goes and how to report vulnerabilities.
 - [Contributing](CONTRIBUTING.md) and the [release audit](docs/production-audit.md) cover verification and remaining release work.

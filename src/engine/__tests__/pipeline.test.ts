@@ -41,6 +41,31 @@ beforeEach(() => {
 afterEach(() => vi.clearAllMocks());
 
 describe("runReview", () => {
+  it.each([
+    ["const matches = input === [];", 1],
+    ["const matches = input.length === 0;", 0],
+  ] as const)(
+    "retains static diagnostics and signals incomplete inference for %s",
+    async (line, count) => {
+      const fake = makeFakeForge({ diffs: [{ ...diff, diff: "@@ -0,0 +1 @@\n+" + line }] });
+      ph.fake = fake;
+      vi.mocked(fake.getFile).mockImplementation(async (_, path) =>
+        path === "a.ts" ? line : null,
+      );
+      vi.mocked(review).mockRejectedValue(new Error("private model response"));
+      const outcome = await runReview(job(), () => {}, { analysis: "hybrid" });
+      expect(outcome.status).toBe("partial");
+      if (!("result" in outcome)) throw Error("Missing static analysis result");
+      expect(outcome.result.findings).toHaveLength(count);
+      expect(outcome.result.summary).toContain("Model review inconclusive");
+      expect(JSON.stringify(outcome)).not.toContain("private model response");
+      const { renderSarif, renderRdjson } = await import("../report.js");
+      expect(renderSarif(outcome).runs[0].invocations[0].executionSuccessful).toBe(false);
+      expect(renderRdjson(outcome).diagnostics).toHaveLength(count);
+      expect(fake.submitReview).not.toHaveBeenCalled();
+    },
+    30_000,
+  );
   it("reads publication policy at the target base while bundling source from the fork", async () => {
     const fake = makeFakeForge({ diffs: [diff], mr: { sourceProjectId: "contributor/fork" } });
     ph.fake = fake;

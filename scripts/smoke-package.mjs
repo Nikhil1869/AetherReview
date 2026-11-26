@@ -158,6 +158,16 @@ try {
   assert.equal(reviewed.headSha, "index");
   assert.equal(reviewed.result.findings[0].evidence, evidence);
   assert.match(reviewed.result.findings[0].id, /^[a-f0-9]{64}$/);
+  const beforeStatic = requests.length;
+  const staticReport = JSON.parse(
+    (await cli("review", "--staged", "--analysis", "static", "--format", "rdjson")).stdout,
+  );
+  assert.deepEqual(staticReport.diagnostics, []);
+  assert.equal(requests.length, beforeStatic);
+  const hybridReport = JSON.parse(
+    (await cli("review", "--staged", "--analysis", "hybrid", "--json")).stdout,
+  );
+  assert.equal(hybridReport.result.findings[0].verification, "source-anchored");
   const sarif = JSON.parse((await cli("review", "--staged", "--format", "sarif")).stdout);
   assert.equal(sarif.runs[0].results[0].locations[0].physicalLocation.region.startLine, 1);
   assert.match(
@@ -172,6 +182,10 @@ try {
   assert(!requests.some((request) => /^(?:POST|PUT|PATCH|DELETE) \/repos\//.test(request)));
 
   invalidModelOutput = true;
+  await assert.rejects(cli("review", "--staged", "--analysis", "hybrid", "--json"), (error) => {
+    const result = JSON.parse(error.stdout);
+    return error.code === 1 && result.status === "partial" && result.result.findings.length === 0;
+  });
   await assert.rejects(cli("review", "--staged", "--json", "--verbose"), (error) => {
     const result = JSON.parse(error.stdout);
     return (

@@ -12,7 +12,15 @@ export function meetsGate(findings: Finding[], threshold: Severity): boolean {
 
 export function findingId(finding: Finding): string {
   return createHash("sha256")
-    .update(JSON.stringify([finding.file, finding.line, finding.category, finding.evidence]))
+    .update(
+      JSON.stringify([
+        finding.file,
+        finding.line,
+        finding.category,
+        finding.evidence,
+        ...(finding.rule ? [finding.rule] : []),
+      ]),
+    )
     .digest("hex");
 }
 
@@ -26,7 +34,7 @@ export function markdownText(text: string): string {
 }
 
 export function renderMarkdown(outcome: ReviewOutcome): string {
-  if (outcome.status !== "completed") return `# AetherReview\n\n${markdownText(outcome.message)}`;
+  if (!("result" in outcome)) return `# AetherReview\n\n${markdownText(outcome.message)}`;
   const lines = ["# AetherReview", "", markdownText(outcome.result.summary)];
   if (outcome.omittedFiles)
     lines.push("", `${outcome.omittedFiles} changed file(s) unavailable or over budget.`);
@@ -47,9 +55,9 @@ export function renderMarkdown(outcome: ReviewOutcome): string {
 
 export function renderSarif(outcome: ReviewOutcome) {
   const results =
-    outcome.status === "completed"
+    "result" in outcome
       ? outcome.result.findings.map((finding) => ({
-          ruleId: finding.category,
+          ruleId: finding.rule ?? finding.category,
           level: { critical: "error", warning: "warning", info: "note" }[finding.severity],
           message: { text: `${finding.title}\n\n${finding.comment}` },
           partialFingerprints: { aetherReviewFinding: finding.id ?? findingId(finding) },
@@ -59,7 +67,7 @@ export function renderSarif(outcome: ReviewOutcome) {
                 artifactLocation: {
                   uri: finding.file.split("/").map(encodeURIComponent).join("/"),
                 },
-                region: { startLine: finding.line },
+                region: { startLine: finding.line, endLine: finding.endLine ?? finding.line },
               },
             },
           ],
@@ -67,6 +75,9 @@ export function renderSarif(outcome: ReviewOutcome) {
             confidence: finding.confidence,
             evidence: finding.evidence,
             suggestion: finding.suggestion,
+            tool: finding.tool,
+            verification: finding.verification,
+            revision: finding.revision,
           },
         }))
       : [];
@@ -76,9 +87,11 @@ export function renderSarif(outcome: ReviewOutcome) {
     runs: [
       {
         tool: { driver: { name: "AetherReview" } },
-        invocations: [{ executionSuccessful: outcome.status !== "failed" }],
+        invocations: [
+          { executionSuccessful: outcome.status !== "failed" && outcome.status !== "partial" },
+        ],
         properties:
-          outcome.status === "completed"
+          "result" in outcome
             ? {
                 status: outcome.status,
                 headSha: outcome.headSha,
@@ -88,5 +101,24 @@ export function renderSarif(outcome: ReviewOutcome) {
         results,
       },
     ],
+  };
+}
+
+export function renderRdjson(outcome: ReviewOutcome) {
+  return {
+    source: { name: "AetherReview" },
+    diagnostics:
+      "result" in outcome
+        ? outcome.result.findings.map((f) => ({
+            message: f.title + "\n" + f.comment,
+            severity: { critical: "ERROR", warning: "WARNING", info: "INFO" }[f.severity],
+            source: { name: f.tool ?? "AetherReview" },
+            code: { value: f.rule ?? f.category },
+            location: {
+              path: f.file,
+              range: { start: { line: f.line }, end: { line: f.endLine ?? f.line } },
+            },
+          }))
+        : [],
   };
 }

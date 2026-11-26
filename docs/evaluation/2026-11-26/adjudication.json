@@ -1,0 +1,98 @@
+{
+  "42d176b2b0b6e875": {
+    "matches": false,
+    "note": "Only a default branch is present. The finding concerns redundant structure."
+  },
+  "cfeb4858773218a0": {
+    "matches": false,
+    "note": "Compound bitwise assignment can coerce the operand and is valid for the upstream self-assignment rule."
+  },
+  "3ddb54112c93004d": {
+    "matches": false,
+    "note": "Arithmetic propagation of NaN differs from a defective comparison against NaN."
+  },
+  "750a462689a690f6": {
+    "matches": false,
+    "note": "A trailing comma does not create an array hole."
+  },
+  "6306239071e79be9": {
+    "matches": false,
+    "note": "The constructor is Foo. The labeled rule applies to an async Promise executor."
+  },
+  "811d0d9551b80b29": {
+    "matches": false,
+    "note": "The property has a capital H and need not refer to Object.prototype.hasOwnProperty."
+  },
+  "2a3d847eb9cad722": {
+    "matches": false,
+    "note": "A local variable does not demonstrate an externally visible race. Error handling is outside the label."
+  },
+  "1a1f0acbc9e76def": {
+    "matches": false,
+    "note": "The parameter names are distinct. Documentation is unrelated."
+  },
+  "c08dafb13c98c602": {
+    "matches": false,
+    "note": "Recognizes the comparison but diagnoses a nonexistent dereference and potential crash. Its suggested inequality is also constant."
+  },
+  "835f3a17e858f809": {
+    "matches": false,
+    "note": "The ordering comparison is false. The report predicts true and an infinite loop."
+  },
+  "fe76730fc3cf8622": {
+    "matches": false,
+    "note": "Misses the repeated literal and proposes adding a default branch which already exists."
+  },
+  "762943c8d3045039": {
+    "matches": true,
+    "note": "Identifies a race on shared foo.bar at the labeled write. Critical severity and generic locking advice are unsupported."
+  },
+  "e9e3bee587ab7da6": {
+    "matches": true,
+    "note": "Correctly identifies the repeated formal parameter and proposes distinct names. The security framing is unsupported."
+  },
+  "866de8f97b690c63": {
+    "matches": false,
+    "note": "There is a hole. No index access occurs and index 1 would be inside the array."
+  },
+  "a6084259cd1051e6": {
+    "matches": false,
+    "note": "Misreads typeof foo as foo and fails to explain that comparing the type string to true is constant. The suggested expressions change meaning."
+  },
+  "6dd6d7fb773378ad": {
+    "matches": false,
+    "note": "The function takes no input and the finally block only logs. No input bounds or off-by-one issue exists."
+  },
+  "481ed6f6d1e19a64": {
+    "matches": false,
+    "note": "The infinite loop observation is accurate, but the diagnosis omits the labeled abrupt completion in finally. The proposed repair also confuses looping with recursion."
+  },
+  "9971c541da8a47bc": {
+    "matches": false,
+    "note": "No code evaluation occurs. The break exits the inner do loop, allowing switch fallthrough."
+  },
+  "c0e844f17c121dd7": {
+    "matches": false,
+    "note": "The empty function makes no recursive call. The defect is a duplicate formal parameter."
+  },
+  "d58c7ba921a69c70": {
+    "matches": false,
+    "note": "The fixture contains an array hole and no index access. Index two would be in bounds."
+  },
+  "7504b8c523a3cd08": {
+    "matches": false,
+    "note": "Does not identify the constant comparison or describe why its operands cannot compare equal."
+  },
+  "cf32281b87411cba": {
+    "matches": false,
+    "note": "Bitwise complement produces a number, so the fallback is unreachable. The expression contains no null dereference."
+  },
+  "67d9d12863c906a4": {
+    "matches": false,
+    "note": "Notices the endless loop but misses the labeled control transfer in finally."
+  },
+  "4bdbd1a7c378f612": {
+    "matches": false,
+    "note": "The switch contains no code evaluation. Misses the fallthrough after the inner loop exits."
+  }
+}

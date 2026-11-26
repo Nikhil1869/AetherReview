@@ -99,9 +99,32 @@ describe("reviewerSettings", () => {
   });
   it("uses defaults when nothing is configured", () => {
     const s = reviewerSettings();
-    expect(s.model).toBe("gemini-2.5-flash");
-    expect(s.baseUrl).toContain("generativelanguage");
+    expect(s.model).toBe("qwen2.5-coder:3b");
+    expect(s.baseUrl).toBe("http://localhost:11434/v1");
     expect(s.apiKey).toBe("");
+  });
+  it("does not route repository content or ambient keys to an implicit hosted reviewer", () => {
+    process.env.GEMINI_API_KEY = "unrelated";
+    process.env.REVIEWER_API_KEY = "unassigned";
+    expect(reviewerSettings()).toMatchObject({
+      configured: false,
+      apiKey: "",
+      baseUrl: "http://localhost:11434/v1",
+    });
+    process.env.REVIEWER_MODEL = "local-model";
+    expect(reviewerSettings()).toMatchObject({
+      configured: true,
+      apiKey: "",
+      model: "local-model",
+    });
+  });
+  it("retains the original provider for saved key-only profiles", () => {
+    updateConfig("reviewer", { api_key: "saved" });
+    expect(reviewerSettings()).toMatchObject({
+      configured: true,
+      apiKey: "saved",
+      baseUrl: "https://generativelanguage.googleapis.com/v1beta/openai/",
+    });
   });
   it("reads stored config", () => {
     updateConfig("reviewer", { api_key: "k", model: "m", base_url: "https://x" });
@@ -138,7 +161,7 @@ describe("app config", () => {
 });
 
 describe("reviewerConfigured", () => {
-  it("is false with no key and a cloud base url", () => {
+  it("is false before the user selects a reviewer", () => {
     expect(reviewerConfigured()).toBe(false);
   });
   it("is true with an api key", () => {

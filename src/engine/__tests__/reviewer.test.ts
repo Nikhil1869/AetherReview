@@ -64,13 +64,15 @@ const norms: Norms = {
 };
 
 beforeEach(() => {
-  process.env.REVIEWER_API_KEY = "k"; // so review() doesn't bail on missing key
+  process.env.REVIEWER_BASE_URL = "https://reviewer.example.test/v1";
+  process.env.REVIEWER_API_KEY = "k";
   process.env.REVIEWER_RETRY_BASE_MS = "1"; // keep retry tests instant
   h.queue = [];
   h.errors = [];
   h.calls = 0;
 });
 afterEach(() => {
+  delete process.env.REVIEWER_BASE_URL;
   delete process.env.REVIEWER_API_KEY;
   delete process.env.REVIEWER_PASSES;
   delete process.env.REVIEWER_RETRY_BASE_MS;
@@ -395,7 +397,7 @@ describe("review (hostile reviewer output)", () => {
   );
 
   it("throws when no API key is configured for a non-local endpoint", async () => {
-    delete process.env.REVIEWER_API_KEY; // default base url is the Gemini cloud endpoint
+    delete process.env.REVIEWER_API_KEY;
     await expect(review(diff(), ctx, norms)).rejects.toThrow(/API key/i);
   });
 });
