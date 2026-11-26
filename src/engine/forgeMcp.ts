@@ -219,7 +219,8 @@ export class GitHubMcpClient implements ForgeClient {
     const comments = await rest.draftComments(projectId, prNumber, draft.id);
     const actor = await rest.session.actorId();
     if (
-      (!comments.length && !justCreated && !known && draft.body !== REVIEW_MARKER) ||
+      (justCreated && comments.length > 0) ||
+      (!comments.length && !justCreated && draft.body !== REVIEW_MARKER) ||
       comments.some(
         (c) =>
           c.user?.id !== actor ||
