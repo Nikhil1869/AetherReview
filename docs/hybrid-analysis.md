@@ -15,6 +15,8 @@ Findings include producer, verification status and revision. Static diagnostics 
 
 ## Independent corpus
 
+When the model cannot complete a hybrid preview, a successfully parsed static result is available in JSON with `status: "partial"` and exit code 1. SARIF marks the invocation unsuccessful while retaining verified diagnostics. An empty partial result leaves the semantic verdict inconclusive. Cancellation still stops the review.
+
 The frozen corpus contains 120 JavaScript examples from ESLint’s own rule tests. There are 30 rule-positive and 30 rule-negative cases in each split. Whole rule families are separated. Exact normalized duplicates are removed, and held-out samples with a token-shingle Jaccard index of at least 0.8 against a development sample are excluded. Cases are selected by source hash under a fixed per-rule quota. The labels come from upstream valid/invalid declarations, independently of AetherReview, and each label is checked with the pinned upstream rule in ESLint’s in-process Linter. Each fixture includes its expected line, source location and upstream diagnostic. The fixtures are treated as text, never imported as programs. [Upstream source revision](https://github.com/eslint/eslint/tree/4a3d15a99c452c4db2fd56b577fa7597e98ab0c2/tests/lib/rules) · [License](../scripts/evaluation/ESLint-LICENSE.txt)
 
 Rule-negative means valid for the named rule. It does not certify a whole snippet is free of unrelated defects. The examples predominantly exercise JavaScript and are staged as new files. The original behavioral changes and prompt-injection case remain a separate evaluation. Use both sets when interpreting results. A finding on the expected line is insufficient to credit its semantic diagnosis.

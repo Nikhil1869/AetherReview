@@ -34,7 +34,7 @@ export function markdownText(text: string): string {
 }
 
 export function renderMarkdown(outcome: ReviewOutcome): string {
-  if (outcome.status !== "completed") return `# AetherReview\n\n${markdownText(outcome.message)}`;
+  if (!("result" in outcome)) return `# AetherReview\n\n${markdownText(outcome.message)}`;
   const lines = ["# AetherReview", "", markdownText(outcome.result.summary)];
   if (outcome.omittedFiles)
     lines.push("", `${outcome.omittedFiles} changed file(s) unavailable or over budget.`);
@@ -55,7 +55,7 @@ export function renderMarkdown(outcome: ReviewOutcome): string {
 
 export function renderSarif(outcome: ReviewOutcome) {
   const results =
-    outcome.status === "completed"
+    "result" in outcome
       ? outcome.result.findings.map((finding) => ({
           ruleId: finding.rule ?? finding.category,
           level: { critical: "error", warning: "warning", info: "note" }[finding.severity],
@@ -87,9 +87,11 @@ export function renderSarif(outcome: ReviewOutcome) {
     runs: [
       {
         tool: { driver: { name: "AetherReview" } },
-        invocations: [{ executionSuccessful: outcome.status !== "failed" }],
+        invocations: [
+          { executionSuccessful: outcome.status !== "failed" && outcome.status !== "partial" },
+        ],
         properties:
-          outcome.status === "completed"
+          "result" in outcome
             ? {
                 status: outcome.status,
                 headSha: outcome.headSha,
@@ -106,7 +108,7 @@ export function renderRdjson(outcome: ReviewOutcome) {
   return {
     source: { name: "AetherReview" },
     diagnostics:
-      outcome.status === "completed"
+      "result" in outcome
         ? outcome.result.findings.map((f) => ({
             message: f.title + "\n" + f.comment,
             severity: { critical: "ERROR", warning: "WARNING", info: "INFO" }[f.severity],

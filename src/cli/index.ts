@@ -156,19 +156,19 @@ program
       signal: controller.signal,
     }).finally(() => process.off("SIGINT", cancel));
     if (controller.signal.aborted) process.exitCode = 130;
-    else if (outcome.status === "failed") process.exitCode = 1;
+    else if (outcome.status === "failed" || outcome.status === "partial") process.exitCode = 1;
     else if (
       outcome.status === "completed" &&
       opts.failOn &&
       meetsGate(outcome.result.findings, opts.failOn)
     )
       process.exitCode = 2;
+    if (outcome.status === "partial" && format === "rdjson") console.error(outcome.result.summary);
     if (format === "json") console.log(JSON.stringify({ schemaVersion: 1, ...outcome }));
     else if (format === "sarif") console.log(JSON.stringify(renderSarif(outcome), null, 2));
     else if (format === "rdjson") console.log(JSON.stringify(renderRdjson(outcome)));
     else if (format === "markdown") console.log(renderMarkdown(outcome));
-    else if (outcome.status !== "completed")
-      console.error(stripVTControlCharacters(outcome.message));
+    else if (!("result" in outcome)) console.error(stripVTControlCharacters(outcome.message));
     else {
       console.log(`${opts.publish ? "Published" : "Preview"} · ${outcome.headSha.slice(0, 12)}`);
       console.log(outcome.result.summary);

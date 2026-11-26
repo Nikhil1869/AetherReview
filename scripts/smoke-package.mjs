@@ -182,6 +182,10 @@ try {
   assert(!requests.some((request) => /^(?:POST|PUT|PATCH|DELETE) \/repos\//.test(request)));
 
   invalidModelOutput = true;
+  await assert.rejects(cli("review", "--staged", "--analysis", "hybrid", "--json"), (error) => {
+    const result = JSON.parse(error.stdout);
+    return error.code === 1 && result.status === "partial" && result.result.findings.length === 0;
+  });
   await assert.rejects(cli("review", "--staged", "--json", "--verbose"), (error) => {
     const result = JSON.parse(error.stdout);
     return (

@@ -48,15 +48,21 @@ async function analyzeChange(
   if (mode === "static" && !mechanical?.analyzed)
     throw Error("Static review inconclusive. No supported source files could be verified.");
   let semantic: Finding[] = [];
+  let partial = false;
   if (mode !== "static") {
     const context = await buildContext(source, project, revision, diff.files, norms, log);
-    const reviewResult = await review(diff, context, norms, log, options.signal);
-    semantic = reviewResult.findings.map((f) => ({
-      ...f,
-      tool: "model",
-      verification: "source-anchored",
-      revision,
-    }));
+    try {
+      const reviewResult = await review(diff, context, norms, log, options.signal);
+      semantic = reviewResult.findings.map((f) => ({
+        ...f,
+        tool: "model",
+        verification: "source-anchored",
+        revision,
+      }));
+    } catch (error) {
+      if (!mechanical?.analyzed || options.signal?.aborted) throw error;
+      partial = true;
+    }
   }
   const diagnostics = (mechanical?.findings ?? []).filter(
     (f) => norms.categories[f.category] !== false,
@@ -65,15 +71,21 @@ async function analyzeChange(
   const outcome = completedReview(
     revision,
     kept,
-    omitted + (mode === "static" && mechanical ? mechanical.total - mechanical.analyzed : 0),
+    omitted +
+      ((mode === "static" || partial) && mechanical ? mechanical.total - mechanical.analyzed : 0),
   );
   if (mechanical)
     outcome.result.summary = `${kept.length} finding(s). Static rules analyzed ${mechanical.analyzed} of ${mechanical.total} selected files.`;
+  if (partial) {
+    outcome.result.summary += " Model review inconclusive.";
+    return { ...outcome, status: "partial" as const };
+  }
   return outcome;
 }
 
 export type ReviewOutcome =
   | { status: "completed"; headSha: string; result: ReviewResult; omittedFiles: number }
+  | { status: "partial"; headSha: string; result: ReviewResult; omittedFiles: number }
   | { status: "skipped" | "failed"; message: string };
 
 export type ReviewTarget =
