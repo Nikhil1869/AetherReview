@@ -1,6 +1,6 @@
 ## AetherReview
 
-AetherReview previews local Git changes, GitHub pull requests and GitLab merge requests from your terminal. A fresh installation checks JavaScript and TypeScript with three parser rules and requires no model or credentials for staged changes. With an explicitly selected reviewer, the CLI can send a bounded diff and context to a local OpenAI-compatible model and check its reported evidence against added lines. See the [analysis guide](docs/hybrid-analysis.md) for rule coverage and the evaluation corpus.
+AetherReview previews local Git changes, GitHub pull requests and GitLab merge requests from your terminal. A fresh installation checks JavaScript and TypeScript with built-in parser rules and requires no model or credentials for staged changes. With an explicitly selected reviewer, the CLI can send a bounded diff and context to a local OpenAI-compatible model and check its reported evidence against added lines. See the [analysis guide](docs/hybrid-analysis.md) for rule coverage and the evaluation corpus.
 
 ## Install from source
 

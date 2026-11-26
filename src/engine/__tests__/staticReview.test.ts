@@ -1,6 +1,7 @@
 import { describe, expect, it, vi } from "vitest";
 import { analyzeStatic } from "../staticReview.js";
 import { renderRdjson } from "../report.js";
+import { Linter } from "eslint";
 
 function reviewSource(source: string, name = "sample.ts", body = source) {
   const lines = source.split("\n");
@@ -15,6 +16,76 @@ function reviewSource(source: string, name = "sample.ts", body = source) {
 }
 
 describe("isolated TypeScript parser", () => {
+  it.each([
+    [
+      "async-promise-executor",
+      "no-async-promise-executor",
+      "const work = new Promise(\n async resolve => resolve(1));",
+      2,
+    ],
+    ["nan-comparison", "use-isnan", "function valid(n) {\n return n !== Number.NaN;\n}", 2],
+    [
+      "duplicate-parameter",
+      "no-dupe-args",
+      "function choose(left,\n right, right) { return right; }",
+      2,
+    ],
+    [
+      "unreachable-statement",
+      "no-unreachable",
+      "function pick(x) {\n if (x) return 1; else throw Error();\n log(x);\n}",
+      3,
+    ],
+  ] as const)(
+    "agrees with the independent %s oracle on the changed source line",
+    async (rule, oracleRule, code, line) => {
+      const oracle = new Linter().verify(code, {
+        languageOptions: { sourceType: "script" },
+        rules: { [oracleRule]: "error" },
+      });
+      // ESLint anchors no-dupe-args on the function; our inline diagnostic
+      // points at the repeated parameter itself.
+      expect(oracle.map((d) => [d.ruleId, d.line])).toEqual([
+        [oracleRule, rule === "duplicate-parameter" ? 1 : line],
+      ]);
+      const findings = (await reviewSource(code, "sample.js")).findings;
+      expect(findings).toHaveLength(1);
+      expect(findings[0]).toMatchObject({
+        rule,
+        line,
+        endLine: line,
+        evidence: code.split("\n")[line - 1],
+        verification: "rule-verified",
+      });
+    },
+  );
+  it("respects local bindings, signatures, hoisting and paths that can continue", async () => {
+    const code = [
+      "function f(Promise: any, Number: any, NaN: any, x: number) {",
+      "  new Promise(async () => {}); if (x === Number.NaN || x > NaN) return;",
+      "  if (x) return; else { log(x); } log(x);",
+      "  stop: { break stop; } log(x);",
+      "  return; function hoisted() {} var declared;",
+      "}",
+      "type Callback = (a: number, a: string) => void;",
+      "const isMissing = (x: number) => Number.isNaN(x);",
+    ].join("\n");
+    expect((await reviewSource(code)).findings).toEqual([]);
+  });
+  it("anchors on a changed operand in CRLF source and excludes an unchanged diagnostic", async () => {
+    const body = "const bad = n ===\r\n  Number.NaN;\r\nnew Promise(async () => {});";
+    const file = {
+      oldPath: "sample.ts",
+      newPath: "sample.ts",
+      newFile: false,
+      deletedFile: false,
+      diff: "@@ -1,3 +1,3 @@\n const bad = n ===\n-  previous;\n+  Number.NaN;\n new Promise(async () => {});",
+    };
+    const result = await analyzeStatic([file], async () => body, "pinned");
+    expect(result.findings.map((f) => [f.rule, f.line, f.evidence])).toEqual([
+      ["nan-comparison", 2, "  Number.NaN;"],
+    ]);
+  });
   it("records rule evidence at the added line and exports linewise diagnostics", async () => {
     const r = await reviewSource("const a: string[] = [];\nif (a === []) process.exit(1);");
     expect(r.findings).toHaveLength(1);
