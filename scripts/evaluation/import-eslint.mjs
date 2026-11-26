@@ -1,5 +1,7 @@
 import { createHash } from "node:crypto";
-import { writeFile } from "node:fs/promises";
+import assert from "node:assert/strict";
+import { readFile, writeFile } from "node:fs/promises";
+import process from "node:process";
 import { URL } from "node:url";
 import ts from "typescript";
 import { Linter } from "eslint";
@@ -159,8 +161,17 @@ for (const [split, names] of Object.entries(rules)) {
     if (count !== 30) throw Error("Insufficient distinct fixtures for " + split + " " + label);
   }
 }
-await writeFile(
-  new URL("./eslint-corpus.json", import.meta.url),
-  JSON.stringify({ revision, cases: selected }, null, 2) + "\n",
-);
-await writeFile(new URL("./ESLint-LICENSE.txt", import.meta.url), await pinned("LICENSE"));
+const corpusFile = new URL("./eslint-corpus.json", import.meta.url);
+const licenseFile = new URL("./ESLint-LICENSE.txt", import.meta.url);
+const corpus = { revision, cases: selected };
+const license = await pinned("LICENSE");
+if (process.argv.includes("--check")) {
+  assert.deepEqual(JSON.parse(await readFile(corpusFile, "utf8")), corpus);
+  assert.equal(
+    (await readFile(licenseFile, "utf8")).replaceAll("\r\n", "\n"),
+    license.replaceAll("\r\n", "\n"),
+  );
+} else {
+  await writeFile(corpusFile, JSON.stringify(corpus, null, 2) + "\n");
+  await writeFile(licenseFile, license);
+}

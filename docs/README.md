@@ -1,6 +1,7 @@
 # AetherReview — Documentation
 
 - [CLI reference](./cli-reference.md)
+- [November 26 release decision, benchmark and raw evidence](./evaluation/2026-11-26/README.md)
 - [Production readiness audit](./production-audit.md)
 - [Release verification](./release.md)
 

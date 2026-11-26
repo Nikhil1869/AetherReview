@@ -44,6 +44,7 @@ Add `--publish` to authorize inline comments, the summary, and status or label u
 
 - [CLI reference](docs/cli-reference.md) covers Git targets, reports, quality gates, and exit codes.
 - [Configuration](docs/configuration.md) covers local and hosted endpoints, credentials, and norms.
+- [Release decision and benchmark](docs/evaluation/2026-11-26/README.md) records the held-out results, model limitations and outstanding gates.
 - [Architecture](docs/architecture.md) and [engine reference](docs/engine-reference.md) describe the review pipeline.
 - [Security policy](SECURITY.md) describes where data goes and how to report vulnerabilities.
 - [Contributing](CONTRIBUTING.md) and the [release audit](docs/production-audit.md) cover verification and remaining release work.
