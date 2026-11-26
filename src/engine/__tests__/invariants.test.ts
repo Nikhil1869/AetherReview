@@ -159,7 +159,17 @@ describe("Invariant 5 — GitHub MCP posts exactly ONE review (pending-review fl
       url.endsWith("/user")
         ? { json: { id: 42 } }
         : url.includes("/comments?")
-          ? { json: [] }
+          ? {
+              json: mcp.calls
+                .filter((c) => c.name === "add_comment_to_pending_review")
+                .map(({ args }) => ({
+                  user: { id: 42 },
+                  commit_id: refs.head_sha,
+                  path: args.path,
+                  line: args.line,
+                  body: args.body,
+                })),
+            }
           : {
               json: mcp.calls.some((c) => c.args.method === "create")
                 ? [{ id: 9, user: { id: 42 }, state: "PENDING", commit_id: refs.head_sha }]
@@ -167,8 +177,8 @@ describe("Invariant 5 — GitHub MCP posts exactly ONE review (pending-review fl
             },
     );
     const c = new GitHubMcpClient();
-    await c.postInlineNote("o/r", 1, "a.ts", 5, "b1", refs);
-    await c.postInlineNote("o/r", 1, "a.ts", 9, "b2", refs);
+    await c.postInlineNote("o/r", 1, "a.ts", 5, "<!-- ct:f:a.ts:5 -->\nb1", refs);
+    await c.postInlineNote("o/r", 1, "a.ts", 9, "<!-- ct:f:a.ts:9 -->\nb2", refs);
     await c.submitReview("o/r", 1, "summary", refs);
 
     const creates = mcp.calls.filter(
