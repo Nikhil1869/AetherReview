@@ -5,6 +5,7 @@ import { sensitivePath, sensitiveText } from "./sensitiveSource.js";
 import { findingId } from "./report.js";
 import { MAX_SOURCE_BYTES } from "./sourceBody.js";
 import type { FileDiff, Finding } from "./types.js";
+import { checkBehavior } from "./staticRules.js";
 
 const freshLiteral = (node: ts.Expression) =>
   (ts.isArrayLiteralExpression(node) && !node.elements.length) ||
@@ -43,7 +44,7 @@ export async function analyzeStatic(
       [...newSideLines(file.diff)].filter((l) => l.added).map((l) => [l.line, l.text]),
     );
     if ([...additions].some(([line, value]) => lines[line - 1] !== value)) continue;
-    const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, false);
+    const source = ts.createSourceFile(path, text, ts.ScriptTarget.Latest, true);
     const program = ts.createProgram(
       [path],
       {
@@ -96,6 +97,7 @@ export async function analyzeStatic(
     const stack: ts.Node[] = [source];
     while (stack.length) {
       const node = stack.pop()!;
+      checkBehavior(node, program, emit);
       if (
         ts.isVariableDeclaration(node) &&
         node.initializer &&

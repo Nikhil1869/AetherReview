@@ -15,6 +15,14 @@ const raw = read(filename)
   .map((line) => JSON.parse(line));
 const dataset = JSON.parse(readFileSync(new URL("./eslint-corpus.json", import.meta.url), "utf8"));
 const cases = new Map(dataset.cases.map((c) => [c.id, c]));
+const oracleRules = new Map([
+  ["duplicate-case", "no-duplicate-case"],
+  ["sparse-array-initializer", "no-sparse-arrays"],
+  ["duplicate-parameter", "no-dupe-args"],
+  ["unreachable-statement", "no-unreachable"],
+  ["nan-comparison", "use-isnan"],
+  ["async-promise-executor", "no-async-promise-executor"],
+]);
 const list = options.includes("--list");
 const grades = list ? {} : JSON.parse(read("adjudication.json"));
 const seen = new Set();
@@ -92,9 +100,7 @@ for (const split of ["development", "heldOut"]) {
       entry.delivered++;
       let matched;
       if (f.tool === "aetherreview/typescript") {
-        matched =
-          (f.rule === "duplicate-case" && c.rule === "no-duplicate-case") ||
-          (f.rule === "sparse-array-initializer" && c.rule === "no-sparse-arrays");
+        matched = oracleRules.get(f.rule) === c.rule;
       } else {
         const key = createHash("sha256")
           .update(JSON.stringify([c.id, f.title, f.comment, f.suggestion ?? ""]))
